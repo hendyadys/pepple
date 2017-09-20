@@ -72,7 +72,7 @@ def center_scale_imgs(imgs, masks):
 
 
 def load_validation_data():
-    imgs_valid, imgs_mask_valid  = load_sliced_data()
+    imgs_valid, imgs_mask_valid = load_sliced_data()
     imgs_valid, imgs_mask_valid, params = center_scale_imgs(imgs_valid, imgs_mask_valid)
     return imgs_valid, imgs_mask_valid, params
 
@@ -147,10 +147,10 @@ def rotation_test():
     imgs_valid = imgs_valid[val_img_start:,]
     imgs_mask_valid = imgs_mask_valid[val_img_start:,]
 
-    weight_file = '%s/%s' % (results_folder, test_weights)  # use 50th epoch for sanity
-    model.load_weights(weight_file)
-    from train import dice_coef_loss, dice_coef
-    model.compile(optimizer=Adam(lr=params[2]), loss=dice_coef_loss, metrics=[dice_coef])
+    # weight_file = '%s/%s' % (results_folder, test_weights)  # use 50th epoch for sanity
+    # model.load_weights(weight_file)
+    # from train import dice_coef_loss, dice_coef
+    # model.compile(optimizer=Adam(lr=params[2]), loss=dice_coef_loss, metrics=[dice_coef])
 
     # visualize imgs
     img_num = 9140 - val_img_start  # somewhat more intuitive segment
@@ -716,8 +716,8 @@ if __name__ == '__main__':
     # translation_test2(2)
     # translation_test2(0,s max_displacement=496)
 
-    # rotation_test()
-    # rotation_test2()
+    rotation_test()
+    rotation_test2()
     # #plot translation and rotation analysis
     # degs = []
     # deg_dice = []
