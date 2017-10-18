@@ -6,50 +6,49 @@ import random
 import numpy as np
 import cv2, json
 from qlearning_data import get_coords, remove_duplicates
-from chamber_tracer import ChamberTracer, get_img_and_loc, make_state, get_coord_from_img, parse_coord_str, \
-    NUM_ACTIONS, LOG_FOLDER, JSON_DIR, IMG_DIR, FILE_BASE, FRAME_HEIGHT, FRAME_WIDTH
+from chamber_tracer import ChamberTracer, get_img_and_loc, make_state, get_coord_from_mask
 
 import tensorflow as tf
 from collections import deque
 from skimage.color import rgb2gray
 from skimage.transform import resize
-from keras.models import Sequential, Model
-from keras.layers import Input, Convolution2D, MaxPooling2D, Dropout, Flatten, Dense
+from keras.models import Sequential
+from keras.layers import Convolution2D, Flatten, Dense
+
+# from qlearning_data import load_qtrain_data
 
 # current image - picked
-IMAGE_PATH = '{}/{}.png'.format(IMG_DIR, FILE_BASE)
-IMAGE_NPY = '{}/acseg_ql.npy'.format(LOG_FOLDER)
-IMAGE_JSON = '{}/{}.json'.format(JSON_DIR, FILE_BASE)
-COORDS_NPY = '{}/acseg_coords_ql.npy'.format(LOG_FOLDER)
+FILE_BASE = 'DeRuyter-Inflamed_20170703mouse6_Day2_Right_160'
+IMAGE_PATH = './acseg/segmentations/{}.png'.format(FILE_BASE)
+IMAGE_NPY = './acseg_ql.npy'
+IMAGE_JSON = './acseg/jsons/{}.json'.format(FILE_BASE)
+COORDS_NPY = './acseg_coords_ql.npy'
 
 ##
 ENV_NAME = 'Breakout-v0'  # Environment name
+FRAME_WIDTH = 512  # Resized frame width
+FRAME_HEIGHT = 500  # Resized frame height
+NUM_CHANNELS = 2    # observation and location
+NUM_ACTIONS = 9     # directions
 
 STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
 NUM_EPISODES = 12000  # Number of episodes the agent plays
 GAMMA = 0.99  # Discount factor
-# EXPLORATION_STEPS = 1000000  # Number of steps over which the initial value of epsilon is linearly annealed to its final value
-EXPLORATION_STEPS = 100000  # Number of steps over which the initial value of epsilon is linearly annealed to its final value
+EXPLORATION_STEPS = 1000000  # Number of steps over which the initial value of epsilon is linearly annealed to its final value
 INITIAL_EPSILON = 1.0  # Initial value of epsilon in epsilon-greedy
 FINAL_EPSILON = 0.1  # Final value of epsilon in epsilon-greedy
-# INITIAL_REPLAY_SIZE = 20000  # Number of steps to populate the replay memory before training starts
-INITIAL_REPLAY_SIZE = 10000  # Number of steps to populate the replay memory before training starts
-# NUM_REPLAY_MEMORY = 400000  # Number of replay memory the agent uses for training
-NUM_REPLAY_MEMORY = 200000  # Number of replay memory the agent uses for training
+INITIAL_REPLAY_SIZE = 20000  # Number of steps to populate the replay memory before training starts
+NUM_REPLAY_MEMORY = 400000  # Number of replay memory the agent uses for training
 BATCH_SIZE = 32  # Mini batch size
-# TARGET_UPDATE_INTERVAL = 10000  # The frequency with which the target network is updated
 TARGET_UPDATE_INTERVAL = 10000  # The frequency with which the target network is updated
 TRAIN_INTERVAL = 4  # The agent selects 4 actions between successive updates
 LEARNING_RATE = 0.00025  # Learning rate used by RMSProp
 MOMENTUM = 0.95  # Momentum used by RMSProp
 MIN_GRAD = 0.01  # Constant added to the squared gradient in the denominator of the RMSProp update
-# SAVE_INTERVAL = 300000  # The frequency with which the network is saved
-SAVE_INTERVAL = 100000  # The frequency with which the network is saved
+SAVE_INTERVAL = 300000  # The frequency with which the network is saved
 NO_OP_STEPS = 30  # Maximum number of "do nothing" actions to be performed by the agent at the start of an episode
 LOAD_NETWORK = False
 TRAIN = True
-# LOAD_NETWORK = True
-# TRAIN = False
 SAVE_NETWORK_PATH = 'saved_networks/' + ENV_NAME
 SAVE_SUMMARY_PATH = 'summary/' + ENV_NAME
 NUM_EPISODES_AT_TEST = 30  # Number of episodes the agent plays at test time
@@ -73,13 +72,11 @@ class Agent():
         self.replay_memory = deque()
 
         # Create q network
-        # self.s, self.q_values, q_network = self.build_network()
-        self.s, self.q_values, q_network = self.build_network2()
+        self.s, self.q_values, q_network = self.build_network()
         q_network_weights = q_network.trainable_weights
 
         # Create target network
-        # self.st, self.target_q_values, target_network = self.build_network()
-        self.st, self.target_q_values, target_network = self.build_network2()
+        self.st, self.target_q_values, target_network = self.build_network()
         target_network_weights = target_network.trainable_weights
 
         # Define target network update operation
@@ -91,12 +88,12 @@ class Agent():
         self.sess = tf.InteractiveSession()
         self.saver = tf.train.Saver(q_network_weights)
         self.summary_placeholders, self.update_ops, self.summary_op = self.setup_summary()
-        self.summary_writer = tf.summary.FileWriter(SAVE_SUMMARY_PATH, self.sess.graph)
+        self.summary_writer = tf.train.SummaryWriter(SAVE_SUMMARY_PATH, self.sess.graph)
 
         if not os.path.exists(SAVE_NETWORK_PATH):
             os.makedirs(SAVE_NETWORK_PATH)
 
-        self.sess.run(tf.global_variables_initializer())
+        self.sess.run(tf.initialize_all_variables())
 
         # Load network
         if LOAD_NETWORK:
@@ -107,65 +104,22 @@ class Agent():
 
     def build_network(self):
         model = Sequential()
-        # conv1 = Convolution2D(32, 3, 3, activation='relu', border_mode='same', init="he_normal")(inputs)
-        # print('conv1 a', conv1._keras_shape)
-        # conv1 = Convolution2D(32, 3, 3, activation='relu', border_mode='same', init="he_normal")(conv1)
-        # model.add(Convolution2D(32, (8, 8), strides=(4, 4), activation='relu', init="he_normal",
-        #                         input_shape=(FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH)))
-        # model.add(Convolution2D(64, (4, 4), strides=(2, 2), activation='relu', init="he_normal"))
-        # model.add(Convolution2D(64, (3, 3), strides=(1, 1), activation='relu', init="he_normal"))
-        model.add(Convolution2D(32, (3, 3), strides=(1, 1), activation='relu', init="he_normal",
-                                input_shape=(FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH)))
-        model.add(Convolution2D(64, (3, 3), strides=(1, 1), activation='relu', init="he_normal"))
-        model.add(Convolution2D(64, (3, 3), strides=(1, 1), activation='relu', init="he_normal"))
+        # model.add(Convolution2D(32, 8, 8, subsample=(4, 4), activation='relu',
+        #                         input_shape=(STATE_LENGTH, FRAME_WIDTH, FRAME_HEIGHT, NUM_CHANNELS)))
+        # model.add(Convolution2D(64, 4, 4, subsample=(2, 2), activation='relu'))
+        # model.add(Convolution2D(64, 3, 3, subsample=(1, 1), activation='relu'))
+        model.add(Convolution2D(32, (3, 3), activation='relu',
+                                input_shape=(STATE_LENGTH, FRAME_WIDTH, FRAME_HEIGHT, NUM_CHANNELS)))
+        model.add(Convolution2D(64, (3, 3), activation='relu'))
+        model.add(Convolution2D(64, (3, 3), activation='relu'))
         model.add(Flatten())
-        model.add(Dense(128, activation='relu'))
+        model.add(Dense(512, activation='relu'))
         model.add(Dense(self.num_actions))
 
-        s = tf.placeholder(tf.float32, [None, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH])
+        s = tf.placeholder(tf.float32, [None, STATE_LENGTH, FRAME_WIDTH, FRAME_HEIGHT, NUM_CHANNELS])
         q_values = model(s)
 
         return s, q_values, model
-
-    def build_network2(self):
-        inputs = Input((FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH))
-
-        # Block 1
-        x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1')(inputs)
-        x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
-        x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
-
-        # Block 2
-        x = Convolution2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
-        x = Convolution2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
-        x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
-
-        # Block 3
-        x = Convolution2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
-        x = Convolution2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
-        x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
-
-        # Block 4 - more blocks for sizing
-        x = Convolution2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
-        x = Convolution2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
-        x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
-
-        # Classification block
-        x = Flatten(name='flatten')(x)
-        x = Dense(1024, activation='relu', name='fc1')(x)
-        x = Dense(1024, activation='relu', name='fc2')(x)
-        # x = Dense(256, activation='relu', name='fc1')(x)
-        # x = Dense(256, activation='relu', name='fc2')(x)
-        x = Dense(self.num_actions, activation='softmax', name='predictions')(x)
-
-        # Create model.
-        model = Model(inputs, x, name='vgg_simple')
-        model.summary()     # can also inspect model layers for weights and input/output shapes
-        # s = tf.placeholder(tf.float32, [None, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH])
-        # q_values = model(s)
-        # return s, q_values, model
-        q_values = model(inputs)
-        return inputs, q_values, model
 
     def build_training_op(self, q_network_weights):
         a = tf.placeholder(tf.int64, [None])
@@ -173,8 +127,7 @@ class Agent():
 
         # Convert action to one hot vector
         a_one_hot = tf.one_hot(a, self.num_actions, 1.0, 0.0)   # should be 9
-        # q_value = tf.reduce_sum(tf.mul(self.q_values, a_one_hot), reduction_indices=1)    # old tf
-        q_value = tf.reduce_sum(tf.multiply(self.q_values, a_one_hot), reduction_indices=1)
+        q_value = tf.reduce_sum(tf.mul(self.q_values, a_one_hot), reduction_indices=1)
 
         # Clip the error, the loss is quadratic when the error is in (-1, 1), and linear outside of that region
         error = tf.abs(y - q_value)
@@ -189,14 +142,14 @@ class Agent():
 
     # def get_initial_state(self, observation, last_observation):
     #     processed_observation = np.maximum(observation, last_observation)
-    #     processed_observation = np.uint8(resize(rgb2gray(processed_observation), (FRAME_HEIGHT, FRAME_WIDTH)) * 255)
+    #     processed_observation = np.uint8(resize(rgb2gray(processed_observation), (FRAME_WIDTH, FRAME_HEIGHT)) * 255)
     #     state = [processed_observation for _ in range(STATE_LENGTH)]
     #     return np.stack(state, axis=0)
     # NB this is fine - just take entire image and repeat 4 times if using whole image
     def get_initial_state(self, observation, coord):
         processed_observation = get_img_and_loc(observation, coord)
         state = [processed_observation for _ in range(STATE_LENGTH)]
-        return np.stack(state, axis=2)
+        return np.stack(state, axis=0)
 
     # FIXME - how should this work?
     def get_action(self, state):
@@ -212,7 +165,7 @@ class Agent():
         return action
 
     def run(self, state, action, reward, terminal, observation):
-        next_state = np.append(state[:, :, 1:], observation.reshape(FRAME_HEIGHT, FRAME_WIDTH, 1), axis=2)
+        next_state = np.append(state[1:, :, :], observation, axis=0)
 
         # Clip all positive rewards at 1 and all negative rewards at -1, leaving 0 rewards unchanged
         reward = np.clip(reward, -1, 1)
@@ -307,17 +260,17 @@ class Agent():
 
     def setup_summary(self):
         episode_total_reward = tf.Variable(0.)
-        tf.summary.scalar(ENV_NAME + '/Total Reward/Episode', episode_total_reward)
+        tf.scalar_summary(ENV_NAME + '/Total Reward/Episode', episode_total_reward)
         episode_avg_max_q = tf.Variable(0.)
-        tf.summary.scalar(ENV_NAME + '/Average Max Q/Episode', episode_avg_max_q)
+        tf.scalar_summary(ENV_NAME + '/Average Max Q/Episode', episode_avg_max_q)
         episode_duration = tf.Variable(0.)
-        tf.summary.scalar(ENV_NAME + '/Duration/Episode', episode_duration)
+        tf.scalar_summary(ENV_NAME + '/Duration/Episode', episode_duration)
         episode_avg_loss = tf.Variable(0.)
-        tf.summary.scalar(ENV_NAME + '/Average Loss/Episode', episode_avg_loss)
+        tf.scalar_summary(ENV_NAME + '/Average Loss/Episode', episode_avg_loss)
         summary_vars = [episode_total_reward, episode_avg_max_q, episode_duration, episode_avg_loss]
         summary_placeholders = [tf.placeholder(tf.float32) for _ in range(len(summary_vars))]
         update_ops = [summary_vars[i].assign(summary_placeholders[i]) for i in range(len(summary_vars))]
-        summary_op = tf.summary.merge_all()
+        summary_op = tf.merge_all_summaries()
         return summary_placeholders, update_ops, summary_op
 
     def load_network(self):
@@ -342,55 +295,56 @@ class Agent():
 ###
 def preprocess(observation, last_observation):
     processed_observation = np.maximum(observation, last_observation)
-    processed_observation = np.uint8(resize(rgb2gray(processed_observation), (FRAME_HEIGHT, FRAME_WIDTH)) * 255)
-    return np.reshape(processed_observation, (1, FRAME_HEIGHT, FRAME_WIDTH))
+    processed_observation = np.uint8(resize(rgb2gray(processed_observation), (FRAME_WIDTH, FRAME_HEIGHT)) * 255)
+    return np.reshape(processed_observation, (1, FRAME_WIDTH, FRAME_HEIGHT))
 
 
 ###
 def main():
+    # env = gym.make(ENV_NAME)
+    # agent = Agent(num_actions=env.action_space.n)
     env = ChamberTracer()
     agent = Agent(num_actions=NUM_ACTIONS)    # 8 directions
 
     if TRAIN:  # Train mode
-        for episode_num in range(NUM_EPISODES):
+        for _ in range(NUM_EPISODES):
             terminal = False
-            observation = env.reset()    # (single) observation includes location info
-            state = env.state   # compartmentalize make_state (initial)
+            observation = env.reset()    # observation includes location info
+
+            for _ in range(random.randint(1, NO_OP_STEPS)):
+                last_observation = observation
+                observation, _, _, _ = env.step(0)  # Do nothing
+            cur_obs = observation[-1,:,:,0]
+            cur_coord = get_coord_from_mask(observation[-1,:,:,1])
+            state = make_state(cur_obs, cur_coord)
 
             while not terminal:
-                # last_observation = observation
-                action = agent.get_action(state)
-                observation, reward, terminal, _ = env.step(action)
+                last_observation = observation
+                action = agent.get_action(state)    # FIXME - right now random direction
+                observation, reward, terminal, _ = env.step(action)    # FIXME
                 # env.render()
-                state = agent.run(state, action, reward, terminal, observation)
-
-            # output action, reward and coords for episode
-            num_actions = len(env.actions)
-            combined_data = np.asarray(env.actions).reshape((num_actions, 1))
-            combined_data = np.append(combined_data, np.asarray(env.rewards).reshape(num_actions, 1), axis=1)
-            visited_coords_real = [parse_coord_str(x) for x in env.visited_coords]
-            combined_data = np.append(combined_data, np.asarray(visited_coords_real), axis=1)
-            file_name = '{}/{}.txt'.format(LOG_FOLDER, episode_num)
-            np.savetxt(file_name, combined_data, delimiter=",")
+                # processed_observation = preprocess(observation, last_observation)   # FIXME not needed
+                # state = agent.run(state, action, reward, terminal, processed_observation)   # FIXME
+                state = agent.run(state, action, reward, terminal, observation[-1,:])  # FIXME
     else:  # Test mode
+        # env.monitor.start(ENV_NAME + '-test')
         for _ in range(NUM_EPISODES_AT_TEST):
             terminal = False
             observation = env.reset()     # initialise
-            state = env.state  # compartmentalize make_state (initial)
+
+            for _ in range(random.randint(1, NO_OP_STEPS)):
+                last_observation = observation
+                # observation, _, _, _ = env.step(0)  # Do nothing
+            state = agent.get_initial_state(observation, last_observation)  # FIXME combines frames
 
             while not terminal:
                 last_observation = observation
                 action = agent.get_action_at_test(state)
-                observation, reward, terminal, _ = env.step(action)
-
-                if agent.t % 100==0 or terminal:
-                    env.render()
-                    print('t={}'.format(agent.t), '#visited={}'.format(len(env.visited_coords)),
-                          'action={}'.format(action), 'reward={}'.format(reward), 'terminal={}'.format(terminal))
-                    input("Press Enter to continue...")
-
-                next_state = np.append(state[:, :, 1:], observation.reshape(FRAME_HEIGHT, FRAME_WIDTH, 1), axis=2)
-    1
+                observation, _, terminal, _ = env.step(action)
+                # env.render()
+                processed_observation = preprocess(observation, last_observation)
+                state = np.append(state[1:, :, :], processed_observation, axis=0)
+        # env.monitor.close()
 
 
 if __name__ == '__main__':

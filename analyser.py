@@ -15,32 +15,42 @@ import matplotlib.pyplot as plt
 from train import get_unet
 from data import load_valid_data, load_train_data, load_sliced_data, slice_data
 
-# # horizontal slice transform
-results_folder = './runs/run2/weights'
-results_figs = './runs/run2/figs'
-results_base = './runs/run2'
-# # results_base = '/home/yue/pepple/runs/2017-08-07-17-15-40'
-# # results_folder = '/home/yue/pepple/runs/2017-08-07-17-15-40/weights'
-# # results_figs = '/home/yue/pepple/runs/2017-08-07-17-15-40/figs'
-test_weights = 'weights-improvement-049--0.88935424.hdf5'
-#
-# vertical slice transform
-results_folder = './runs/runVertical/weights'
-results_figs = './runs/runVertical/figs'
-results_base = './runs/runVertical'
-results_base = '/home/yue/pepple/runs/2017-08-09-10-20-24'
-results_folder = '/home/yue/pepple/runs/2017-08-09-10-20-24/weights'
-results_figs = '/home/yue/pepple/runs/2017-08-09-10-20-24/figs'
-test_weights = 'weights-improvement-050--0.95407502.hdf5'
+from sys import platform
+if platform == "linux" or platform == "linux2":
+    # # horizontal slice transform
+    # results_base = '/home/yue/pepple/runs/2017-08-07-17-15-40'
+    # results_folder = '/home/yue/pepple/runs/2017-08-07-17-15-40/weights'
+    # results_figs = '/home/yue/pepple/runs/2017-08-07-17-15-40/figs'
+    # test_weights = 'weights-improvement-049--0.88935424.hdf5'
 
-# # vertical slice transform longer version with lr=1e-7
-# results_folder = './runs/runVertical2/weights'
-# results_figs = './runs/runVertical2/figs'
-# results_base = './runs/runVertical2'
-# results_base = '/home/yue/pepple/runs/2017-08-09-19-02-27'
-# results_folder = '/home/yue/pepple/runs/2017-08-09-19-02-27/weights'
-# results_figs = '/home/yue/pepple/runs/2017-08-09-19-02-27/figs'
-# test_weights = 'weights-improvement-378--0.91209759.hdf5'   # still improving when crashed
+    results_base = '/home/yue/pepple/runs/2017-08-09-10-20-24'
+    results_folder = '/home/yue/pepple/runs/2017-08-09-10-20-24/weights'
+    results_figs = '/home/yue/pepple/runs/2017-08-09-10-20-24/figs'
+    test_weights = 'weights-improvement-050--0.95407502.hdf5'
+
+    # # vertical slice transform longer version with lr=1e-7 for making movies
+    # results_base = '/home/yue/pepple/runs/2017-08-09-19-02-27'
+    # results_folder = '/home/yue/pepple/runs/2017-08-09-19-02-27/weights'
+    # results_figs = '/home/yue/pepple/runs/2017-08-09-19-02-27/figs'
+    # test_weights = 'weights-improvement-378--0.91209759.hdf5'   # still improving when crashed
+elif platform == "win32":
+    # # horizontal slice transform
+    # results_folder = './runs/run2/weights'
+    # results_figs = './runs/run2/figs'
+    # results_base = './runs/run2'
+    # test_weights = 'weights-improvement-049--0.88935424.hdf5'
+
+    # vertical slice transform
+    results_folder = './runs/runVertical/weights'
+    results_figs = './runs/runVertical/figs'
+    results_base = './runs/runVertical'
+    test_weights = 'weights-improvement-050--0.95407502.hdf5'
+
+    # # vertical slice transform longer version with lr=1e-7
+    # results_folder = './runs/runVertical2/weights'
+    # results_figs = './runs/runVertical2/figs'
+    # results_base = './runs/runVertical2'
+    # test_weights = 'weights-improvement-378--0.91209759.hdf5'   # still improving when crashed
 
 img_rows = 512
 img_cols = 512
@@ -537,7 +547,8 @@ def combine_img(strip_preds, real_mean=False):
         avg_preds = np.true_divide(pred_sum, pred_nonzero)
         avg_preds[pred_nonzero == 0] = 0
     else:
-        avg_preds = np.mean(aligned_img, axis=1)
+        # avg_preds = np.mean(aligned_img, axis=1)
+        avg_preds = np.mean(aligned_img, axis=0)
     return avg_preds
 
 
