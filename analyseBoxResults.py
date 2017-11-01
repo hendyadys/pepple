@@ -58,11 +58,11 @@ def compute_metrics(visualise=False):
 
         if visualise and true_coords and pred_coords:
             img = cv2.imread(test_image, cv2.IMREAD_GRAYSCALE)
-            visualize_preds(img, true_coords, pred_coords, flipAxis=False)
+            visualize_preds(img, true_coords, pred_coords)
     return total_score
 
 
-def visualize_preds(img, true_coords, pred_coords, flipAxis=False):
+def visualize_preds(img, true_coords, pred_coords):
     plt.figure(1)
     plt.clf()
     plt.imshow(img)
@@ -73,25 +73,18 @@ def visualize_preds(img, true_coords, pred_coords, flipAxis=False):
     ax1.set_title('true and predicted ac cells')
     for coord in true_coords:    # add cells to image
         (x1, y1, x2, y2) = coord
-        if flipAxis:    # shouldn't need to flip
-            ax1.add_patch(patches.Rectangle((y1, x1), y2 - y1, x2 - x1, fill=False, color='white', linewidth=1))
-        else:
-            ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='white', linewidth=1))  # not flipped
+        ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='white', linewidth=1))
 
     for coord in pred_coords:    # add cells to image
         (x1, y1, x2, y2) = coord
-        if flipAxis:    # shouldn't need to flip
-            ax1.add_patch(patches.Rectangle((y1, x1), y2 - y1, x2 - x1, fill=False, color='red', linewidth=1))
-            ax1.scatter(y=[(x1 + x2) / 2], x=[(y1 + y2) / 2], c='yellow', s=2)
-        else:
-            ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='red', linewidth=1))  # not flipped
-            ax1.scatter(x=[(x1+x2)/2], y=[(y1+y2)/2], c='yellow', s=2)
+        ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='red', linewidth=1))
+        ax1.scatter(x=[(x1+x2)/2], y=[(y1+y2)/2], c='yellow', s=2)
 
     # show high intensity parts
     plt.figure(3)
     plt.clf()
     plt.imshow(img)
-    high_intensity_points = np.argwhere(img > 50)
+    high_intensity_points = np.argwhere(img > 60)
     plt.scatter(x=high_intensity_points[:, 1], y=high_intensity_points[:, 0], c='red', s=1)
 
     return
@@ -115,7 +108,7 @@ def calc_min_dist(true_coords, pred_coords):
                 cur_min_idx = idx
 
         min_dist.append(cur_min_dist)
-        if cur_min_dist < 4:    # only add idx if really close to matching
+        if cur_min_dist < 3:    # only add idx if really close to matching
             min_dist_idx.append(cur_min_idx)
 
     return min_dist, min_dist_idx
@@ -134,12 +127,21 @@ def euclid_dist(coord_1, coord_2):
     return euclidean_dist
 
 
-def get_true_coords(folder=test_folder):
+def get_true_coords(folder=test_folder, get_test_data=True):
     true_dict = {}
-    path_prefix = '/home/yue/pepple/accell/test/'
-    path_prefix = '/home/yue/pepple/accell/augmented_test/'
-    # with open("{}/test_coords.txt".format(folder)) as fin:
-    with open("{}/test_coords_clean.txt".format(folder)) as fin:
+    if get_test_data:
+        path_prefix = '/home/yue/pepple/accell/augmented_test/'
+        path_prefix = '/home/yue/pepple/accell/blank_32_32_noisy/valid/'
+        # coord_file = "{}/test_coords_clean.txt".format(folder)
+        coord_file = "{}/test_coords.txt".format(folder)
+    else:
+        path_prefix = '/home/yue/pepple/accell/augmented/'
+        path_prefix = '/home/yue/pepple/accell/blank_128_128/train/'
+        # folder = './accell/augmented_master'
+        # coord_file = "{}/training_coords_clean.txt".format(folder)
+        coord_file = "{}/training_coords.txt".format(folder)
+
+    with open(coord_file) as fin:
         for l in fin:
             arr = l.rstrip().split(",")  # faster-rcnn input format
             file_name = arr[0].replace(path_prefix, '')
@@ -154,7 +156,8 @@ def get_true_coords(folder=test_folder):
 def get_predicted_coords(folder=test_folder):
     predicted_dict = {}
     # with open("{}/coords.txt".format(results_folder)) as fin:
-    with open("{}/coords.txt".format(folder)) as fin:
+    # with open("{}/coords.txt".format(folder)) as fin:
+    with open("{}/coords_noisy.txt".format(folder)) as fin:
         for l in fin:
             arr = l.rstrip().split("\t")
             file_name = arr[0]
@@ -166,35 +169,51 @@ def get_predicted_coords(folder=test_folder):
 
 
 # compare predicted vs true and plot where necessary
-def compute_metrics2(visualise=False):
-    predicted_dict = get_predicted_coords()
-    true_dict = get_true_coords()
+def compute_metrics2(results_folder=test_folder, do_test=True, visualise=False):
+    predicted_dict = get_predicted_coords(folder=results_folder)
+    true_dict = get_true_coords(folder=results_folder, get_test_data=do_test)
 
     # num_true, num_pred, min_dist_t, min_dist_p, intensity_t, intensity_p, intensity_m, num_pred_within_4pixel
     total_score = np.ndarray((len(predicted_dict), 8), dtype=np.float32)
+    total_predicted = np.ndarray((len(predicted_dict), 2), dtype=np.float32)
     counter = 0
+    all_counter = 0
     for key, value in predicted_dict.items():
 
         pred_coords = value
+        num_preds = len(pred_coords)
+        total_predicted[all_counter, 1] = num_preds
+        all_counter +=1
+
         true_coords = []
         if key in true_dict:
             true_coords = true_dict[key]
+            num_true = len(true_coords)
+            total_predicted[all_counter-1, 0] = num_true
+        else:
+            total_predicted[all_counter-1, 0] = 0
+            continue
         min_dist_t, min_idx_t = calc_min_dist(true_coords, pred_coords)
         min_dist_p, min_idx_p = calc_min_dist(pred_coords, true_coords)
         # are we only identifying brighter cells?
-        img_name = '{}\{}'.format(test_folder, key)
+        # img_name = '{}\{}'.format(test_folder, key)
+        img_name = '{}\{}'.format(results_folder, key)
         img = cv2.imread(img_name, cv2.IMREAD_GRAYSCALE)
         true_avg_intensity, pred_avg_intensity, matched_avg_intensities = found_vs_missed_analysis(img, true_coords, pred_coords)
 
-        total_score[counter, ] = [len(true_coords), len(pred_coords), np.nanmean(min_dist_t), np.nanmean(min_dist_p),
+        total_score[counter, ] = [num_true, num_preds, np.nanmean(min_dist_t), np.nanmean(min_dist_p),
                                   true_avg_intensity, pred_avg_intensity, np.mean(matched_avg_intensities),
                                   len(matched_avg_intensities)]
         counter += 1
 
         if visualise and true_coords and pred_coords:
-            visualize_preds(img, true_coords, pred_coords, flipAxis=False)
+            visualize_preds(img, true_coords, pred_coords)
             1
             # img_bright_spots(img, intensity_threshold=75)
+
+    # some analysis
+    analyse_pred_metrics2(total_score, total_predicted, counter)
+
     return total_score
 
 
@@ -233,17 +252,20 @@ def found_vs_missed_analysis(img, true_coords, pred_coords):
 
 
 def check_aug_data(check_test=False):
-    true_dict = get_true_coords()
+    true_dict = get_true_coords(get_test_data=check_test)
 
     for key, value in true_dict.items():
-        img_name = '{}\{}'.format(test_folder, key)
+        if check_test:
+            img_name = '{}\{}'.format(test_folder, key)
+        else:
+            img_name = '{}\{}'.format('./accell/augmented', key)
         img = cv2.imread(img_name, cv2.IMREAD_GRAYSCALE)
-        visualize_preds(img, value, value, flipAxis=False)
+        visualize_preds(img, value, value)
         # compare cell intensity vs image intensity
         cell_patches, patch_mean_intensities, avg_patch_intensity = get_coord_patches(img, value)
         img_mean_intensity = np.mean(img)
-        print('check aug data', patch_mean_intensities, avg_patch_intensity, img_mean_intensity)
-        get_original_img(key, coords=value)
+        print('check aug data', avg_patch_intensity, img_mean_intensity, patch_mean_intensities)
+        # get_original_img(key, coords=value)
     return
 
 
@@ -263,14 +285,14 @@ def get_original_img(img_name, coords):
     # visualize
     ds_img = ds_data[int(idx/2), :, :, 0]
     adj_coords = [(x[0]+x_shift, x[1]+y_shift, x[2]+x_shift, x[3]+y_shift) for x in coords]
-    visualize_preds(ds_img, adj_coords, adj_coords, flipAxis=False)
+    visualize_preds(ds_img, adj_coords, adj_coords)
     cell_patches, patch_mean_intensities, avg_patch_intensity = get_coord_patches(ds_img, adj_coords)
 
     # load raw image and downsample for comparison
     img = cv2.imread('{}/{}.png'.format(orig_img_folder, img_base_name), cv2.IMREAD_GRAYSCALE)
     img_shape = img.shape
     ds_img2 = downsample(img.reshape((1, img_shape[0], img_shape[1])), factor=int(DOWNSAMPLE_RATIO))
-    # visualize_preds(ds_img2, adj_coords, adj_coords, flipAxis=False)
+    # visualize_preds(ds_img2, adj_coords, adj_coords)
     np.sum(ds_img==ds_img2)
     return
 
@@ -316,6 +338,37 @@ def confirm_coord_with_cone_data():
     return
 
 
+def confirm_coord_with_pascal_data():
+    pascal_img_folder = '../VOCdevkit/VOC2012/JPEGImages'
+    pascal_annotations_folder = '../VOCdevkit/VOC2012/Annotations'
+    file_names = ['2007_000129']
+    for file_name in file_names:
+        img_name = '{}/{}.jpg'.format(pascal_img_folder, file_name)
+        annot_name = '{}/{}.xml'.format(pascal_annotations_folder, file_name)
+        img = cv2.imread(img_name)
+        plt.imshow(img)
+        import xml.etree.ElementTree as ET
+        root = ET.parse(annot_name).getroot()
+        img_coords = []
+        for obj in root.findall('object'):
+            bnd_boxes = obj.findall('bndbox')
+            for bnd_box in bnd_boxes:
+                xmin = int(bnd_box.find('xmin').text)
+                xmax = int(bnd_box.find('xmax').text)
+                ymin = int(bnd_box.find('ymin').text)
+                ymax = int(bnd_box.find('ymax').text)
+                img_coords.append((xmin, ymin, xmax, ymax))
+        img_coords2 = np.asarray(img_coords)
+        # plt.scatter(x=img_coords2[:, 0], y=img_coords2[:, 1], c='red', s=2)
+        # plt.scatter(x=img_coords2[:, 2], y=img_coords2[:, 3], c='blue', s=2)
+        fig1, ax1 = plt.subplots(1)
+        ax1.imshow(img)
+        for coord in img_coords:  # add cells to image
+            (x1, y1, x2, y2) = coord
+            ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='white', linewidth=1))
+    return
+
+
 def get_cone_coords(file='../overview/1-process-data/cone_data_valid.txt'):
     coord_dict = {}
     with open(file) as fin:
@@ -330,11 +383,27 @@ def get_cone_coords(file='../overview/1-process-data/cone_data_valid.txt'):
     return coord_dict
 
 
-def analyse_pred_metrics2(pred_npy='predicted_metrics.npy'):
+# def analyse_pred_metrics2(pred_npy='predicted_metrics.npy', ):
+def analyse_pred_metrics2(total_score, total_predicted, counter):
     # num_true, num_pred, min_dist_t, min_dist_p, intensity_t, intensity_p, intensity_m
-    total_score = np.load(pred_npy)
-    img_mean = np.nanmean(total_score, axis=0)
-    return
+    # total_score = np.load(pred_npy)
+
+    # img_mean = np.nanmean(total_score, axis=0)    # doesn't work if overpredicting counter<len(predicted_dict)
+    pred_minus_true = total_predicted[:, 1] - total_predicted[:, 0]
+    pred_min_true_quantiles = np.percentile(pred_minus_true, [10, 50, 90])
+    false_discovery_rate = np.sum(pred_minus_true) / np.sum(total_predicted[:, 1])  # false_positive/pred_positive
+    precision = 1 - false_discovery_rate
+
+    pred_minus_true2 = total_score[range(counter), 1] - total_score[range(counter), 0]
+    pred_min_true_quantiles2 = np.percentile(pred_minus_true2, [10, 50, 90])
+    score_mean = np.nanmean(total_score[range(counter),], axis=0)
+
+    pred_close = total_score[range(counter), 0] - total_score[range(counter), -1]
+    num_missed_preds = np.sum(pred_close[np.where(pred_close > 0),])
+    false_neg_rate = num_missed_preds / np.sum(total_score[range(counter), 0])
+    sensitivity = 1 - false_neg_rate
+
+    return precision, sensitivity, false_discovery_rate, false_neg_rate, pred_min_true_quantiles, pred_min_true_quantiles2
 
 
 def analyse_pred_metrics(pred_npy='predicted_metrics.npy'):
@@ -363,16 +432,20 @@ def analyse_pred_metrics(pred_npy='predicted_metrics.npy'):
 
 
 if __name__ == '__main__':
-    # check_aug_data()  # check generated data
+    # check_aug_data(check_test=False)  # check generated data
     # confirm_coord_with_cone_data()    # make sure ac cell data coordinates setup in same way
+    # confirm_coord_with_pascal_data()
 
     ### for cone data
     # total_score = compute_metrics(visualise=True)
     # score_npy = 'predicted_metrics.npy'
-    # analyse_pred_metrics2(score_npy)
 
     ### ac cell data
-    total_score = compute_metrics2(visualise=False)
+    # total_score = compute_metrics2(visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/augmented', do_test=False, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/blank_32_32/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/blank_128_128/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/blank_128_128/train', do_test=False, visualise=False)   # to see if we can overfit
+    total_score = compute_metrics2(results_folder='./accell/blank_32_32_noisy/valid', do_test=True, visualise=False)
     score_npy = 'predicted_metrics.npy'
     # np.save(score_npy, total_score)
-    analyse_pred_metrics2(score_npy)

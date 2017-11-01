@@ -1,21 +1,27 @@
 # coding:utf-8
 
 import os
-# import gym
+#import gym
 import random
 import numpy as np
 import cv2, json
-# from qlearning_data import get_coords, remove_duplicates
+#from qlearning_data import get_coords, remove_duplicates
 from chamber_tracer import ChamberTracer, get_img_and_loc, make_state, get_coord_from_img, parse_coord_str, \
     NUM_ACTIONS, LOG_FOLDER, JSON_DIR, IMG_DIR, FILE_BASE, FRAME_HEIGHT, FRAME_WIDTH, RAW_HEIGHT, RAW_WIDTH, \
     CHEAT_PEEK, ADD_LAST, DO_CENTRALIZE
 
 import tensorflow as tf
 from collections import deque
-# from skimage.color import rgb2gray
-# from skimage.transform import resize
+#from skimage.color import rgb2gray
+#from skimage.transform import resize
 from keras.models import Sequential, Model
 from keras.layers import Input, Convolution2D, MaxPooling2D, Dropout, Flatten, Dense
+
+# # current image - picked
+# IMAGE_PATH = '{}/{}.png'.format(IMG_DIR, FILE_BASE)
+# IMAGE_NPY = '{}/acseg_ql.npy'.format(LOG_FOLDER)
+# IMAGE_JSON = '{}/{}.json'.format(JSON_DIR, FILE_BASE)
+# COORDS_NPY = '{}/acseg_coords_ql.npy'.format(LOG_FOLDER)
 
 ##
 ENV_NAME = 'ChamberTracer'  # Environment name
@@ -24,7 +30,7 @@ STATE_LENGTH = 4  # Number of most recent frames to produce the input to the net
 NUM_EPISODES = 12000  # Number of episodes the agent plays
 GAMMA = 0.99  # Discount factor
 # EXPLORATION_STEPS = 1000000  # Number of steps over which the initial value of epsilon is linearly annealed to its final value
-EXPLORATION_STEPS = 1000000  # Number of steps over which the initial value of epsilon is linearly annealed to its final value
+EXPLORATION_STEPS = 100000  # Number of steps over which the initial value of epsilon is linearly annealed to its final value
 INITIAL_EPSILON = 1.0  # Initial value of epsilon in epsilon-greedy
 FINAL_EPSILON = 0.1  # Final value of epsilon in epsilon-greedy
 # INITIAL_REPLAY_SIZE = 20000  # Number of steps to populate the replay memory before training starts
@@ -39,15 +45,14 @@ LEARNING_RATE = 0.00025  # Learning rate used by RMSProp
 MOMENTUM = 0.95  # Momentum used by RMSProp
 MIN_GRAD = 0.01  # Constant added to the squared gradient in the denominator of the RMSProp update
 # SAVE_INTERVAL = 300000  # The frequency with which the network is saved
-SAVE_INTERVAL = 20000  # The frequency with which the network is saved
+SAVE_INTERVAL = 100000  # The frequency with which the network is saved
 NO_OP_STEPS = 30  # Maximum number of "do nothing" actions to be performed by the agent at the start of an episode
-
 LOAD_NETWORK = False
 TRAIN = True
 LOAD_NETWORK = True
 TRAIN = False
-SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_l{}_c{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST, CHEAT_PEEK)
-SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_l{}_c{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST, CHEAT_PEEK)
+SAVE_NETWORK_PATH = 'saved_networks/{}_l{}_c{}'.format(ENV_NAME, ADD_LAST, CHEAT_PEEK)
+SAVE_SUMMARY_PATH = 'summary/{}_l{}_c{}'.format(ENV_NAME, ADD_LAST, CHEAT_PEEK)
 NUM_EPISODES_AT_TEST = 30  # Number of episodes the agent plays at test time
 
 
@@ -109,11 +114,11 @@ class Agent():
         # model.add(Convolution2D(32, (8, 8), strides=(4, 4), activation='relu', init="he_normal",
         #                         input_shape=(FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH)))
         # model.add(Convolution2D(64, (4, 4), strides=(2, 2), activation='relu', init="he_normal"))
-        # model.add(Convolution2D(64, (3, 3), strides=(1, 1), activation='relu', init="he_normal"))
-        model.add(Convolution2D(32, (3, 3), strides=(1, 1), activation='relu', init="he_normal",
+        # model.add(Convolution2D(64, 3, 3, strides=(1, 1), activation='relu', init="he_normal"))
+        model.add(Convolution2D(32, 3, 3, strides=(1, 1), activation='relu', init="he_normal",
                                 input_shape=(FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH)))
-        model.add(Convolution2D(64, (3, 3), strides=(1, 1), activation='relu', init="he_normal"))
-        model.add(Convolution2D(64, (3, 3), strides=(1, 1), activation='relu', init="he_normal"))
+        model.add(Convolution2D(64, 3, 3, strides=(1, 1), activation='relu', init="he_normal"))
+        model.add(Convolution2D(64, 3, 3, strides=(1, 1), activation='relu', init="he_normal"))
         model.add(Flatten())
         model.add(Dense(128, activation='relu'))
         model.add(Dense(self.num_actions))
@@ -127,23 +132,23 @@ class Agent():
         inputs = Input((FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH))
 
         # Block 1
-        x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1')(inputs)
-        x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
+        x = Convolution2D(64, 3, 3, activation='relu', border_mode='same', name='block1_conv1')(inputs)
+        x = Convolution2D(64, 3, 3, activation='relu', border_mode='same', name='block1_conv2')(x)
         x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
 
         # Block 2
-        x = Convolution2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
-        x = Convolution2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
+        x = Convolution2D(128, 3, 3, activation='relu', border_mode='same', name='block2_conv1')(x)
+        x = Convolution2D(128, 3, 3, activation='relu', border_mode='same', name='block2_conv2')(x)
         x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
 
         # Block 3
-        x = Convolution2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
-        x = Convolution2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
+        x = Convolution2D(256, 3, 3, activation='relu', border_mode='same', name='block3_conv1')(x)
+        x = Convolution2D(256, 3, 3, activation='relu', border_mode='same', name='block3_conv2')(x)
         x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
 
         # Block 4 - more blocks for sizing
-        x = Convolution2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
-        x = Convolution2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
+        x = Convolution2D(512, 3, 3, activation='relu', border_mode='same', name='block4_conv1')(x)
+        x = Convolution2D(512, 3, 3, activation='relu', border_mode='same', name='block4_conv2')(x)
         x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
 
         # Classification block
@@ -336,10 +341,10 @@ class Agent():
 
 
 ###
-# def preprocess(observation, last_observation):
-#     processed_observation = np.maximum(observation, last_observation)
-#     processed_observation = np.uint8(resize(rgb2gray(processed_observation), (FRAME_HEIGHT, FRAME_WIDTH)) * 255)
-#     return np.reshape(processed_observation, (1, FRAME_HEIGHT, FRAME_WIDTH))
+#def preprocess(observation, last_observation):
+#    processed_observation = np.maximum(observation, last_observation)
+#    processed_observation = np.uint8(resize(rgb2gray(processed_observation), (FRAME_HEIGHT, FRAME_WIDTH)) * 255)
+#    return np.reshape(processed_observation, (1, FRAME_HEIGHT, FRAME_WIDTH))
 
 
 ###
@@ -366,8 +371,7 @@ def main():
             combined_data = np.append(combined_data, np.asarray(env.rewards).reshape(num_actions, 1), axis=1)
             visited_coords_real = [parse_coord_str(x) for x in env.visited_coords]
             combined_data = np.append(combined_data, np.asarray(visited_coords_real), axis=1)
-            file_name = '{}/e{}_h{}_w{}_l{}_c{}.txt'.format(LOG_FOLDER, episode_num, FRAME_HEIGHT, FRAME_WIDTH,
-                                                            ADD_LAST, CHEAT_PEEK)
+            file_name = '{}/e{}_l{}_c{}.txt'.format(LOG_FOLDER, episode_num, ADD_LAST, CHEAT_PEEK)
             np.savetxt(file_name, combined_data, delimiter=",")
     else:  # Test mode]
         total_reward = 0
