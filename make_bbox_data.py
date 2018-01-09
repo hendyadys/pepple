@@ -5,6 +5,7 @@ import random
 from matplotlib import pyplot as plt
 from matplotlib import patches
 # plt.switch_backend('agg')
+from scipy import ndimage
 
 # make textfile for cones
 # filepath, x1, y1, x2, y2, class_name`
@@ -64,6 +65,11 @@ step_size_r=8*2
 step_size_c=8*2
 cell_size = 5  # make it look like islands
 NOISIER = True
+
+# for sampler
+SAMPLER_CLEANED_IMGS = None
+SAMPLER_PREDS = None
+SAMPLER_IMG_NAMES = []
 
 
 def visualize_bbox_data(img, img_coords, cur_img, cur_coords, cur_x, cur_y, nrows=nrows, ncols=ncols, flipAxis=False):
@@ -331,22 +337,54 @@ def get_all_ac_cells(pnames, raw_data, threshold=50, visualise=False):
     return all_coords_data
 
 
+def get_best_local_cell(img, cur_x, cur_y, num_pixels=2, visualise=False):
+    image_shape = img.shape
+    avg_intensities = np.zeros((num_pixels*2+1, num_pixels*2+1), dtype=np.float32)
+    search_range = range(-num_pixels, num_pixels+1, 1)
+    for idx, dx in enumerate(search_range):
+        for jdy, dy in enumerate(search_range):
+            new_x = cur_x + dx
+            new_y = cur_y + dy
+            new_cell_coords = make_box_coords(new_x, new_y, image_shape, box_size=cell_size)
+            new_cell = img[new_cell_coords[1]:new_cell_coords[3], new_cell_coords[0]:new_cell_coords[2], 0]
+            avg_intensities[idx, jdy] = np.mean(new_cell)
+
+    i, j = np.unravel_index(avg_intensities.argmax(), avg_intensities.shape)
+    best_x = cur_x +search_range[i]
+    best_y = cur_y + search_range[j]
+    best_cell_coords = make_box_coords(best_x, best_y, image_shape, box_size=cell_size)
+    best_cell = img[best_cell_coords[1]:best_cell_coords[3], best_cell_coords[0]:best_cell_coords[2], 0]
+
+    if visualise:
+        fig1, ax1 = plt.subplots(1)
+        ax1.imshow(img.reshape(RAW_IMAGE_HEIGHT, RAW_IMAGE_WIDTH))
+        ax1.scatter(x=cur_x, y=cur_y, c='red', s=2)  # not flipped
+        (init_x1, init_y1, init_x2, init_y2) = make_box_coords(cur_x, cur_y, image_shape, box_size=cell_size)
+        ax1.add_patch(patches.Rectangle((init_x1, init_y1), cell_size, cell_size, fill=False, color='white'))
+        ax1.add_patch(patches.Rectangle((best_cell_coords[0], best_cell_coords[1]), cell_size, cell_size, fill=False, color='red'))
+
+    return best_cell, best_cell_coords, best_x, best_y
+
+
 def recenter_cell(img, cur_x, cur_y, image_shape, visualise=False):
     init_cell_coords = make_box_coords(cur_x, cur_y, image_shape, box_size=cell_size)
-    init_cell = img[init_cell_coords [1]:init_cell_coords [3], init_cell_coords [0]:init_cell_coords [2], 0]  # NB. meaning of coords
+    init_cell = img[init_cell_coords[1]:init_cell_coords[3], init_cell_coords[0]:init_cell_coords[2], 0]  # NB. meaning of coords
     # cur_cell = img[cur_cell_coords[0]:cur_cell_coords[2], cur_cell_coords[1]:cur_cell_coords[3], 0]
 
     # get maximal intensity location and re-center
-    cell_y, cell_x = get_max_coord_from_patch(init_cell)
+    old_search = False
+    if old_search:
+        cell_y, cell_x = get_max_coord_from_patch(init_cell)
+        new_y = cur_y + cell_y - cell_size//2
+        new_x = cur_x + cell_x - cell_size//2
 
-    new_y = cur_y + cell_y - cell_size//2
-    new_x = cur_x + cell_x - cell_size//2
-
-    new_cell_coords = make_box_coords(new_x, new_y, image_shape, box_size=cell_size)
-    new_cell = img[new_cell_coords [1]:new_cell_coords [3], new_cell_coords [0]:new_cell_coords [2], 0]  # NB. meaning of coords
-    if np.mean(new_cell) < np.mean(init_cell):  # want best intensity patches
-        new_cell = init_cell
-        new_cell_coords = init_cell_coords
+        new_cell_coords = make_box_coords(new_x, new_y, image_shape, box_size=cell_size)
+        new_cell = img[new_cell_coords[1]:new_cell_coords[3], new_cell_coords[0]:new_cell_coords[2], 0]  # NB. meaning of coords
+        if np.mean(new_cell) < np.mean(init_cell):  # want best intensity patches
+            new_cell = init_cell
+            new_cell_coords = init_cell_coords
+    else:
+        new_cell, new_cell_coords, new_x, new_y = get_best_local_cell(img, cur_x, cur_y, num_pixels=2)
 
     if visualise:
         fig1, ax1 = plt.subplots(1)
@@ -620,6 +658,40 @@ def is_overlapping(coords, new_coord):
 
 
 # careful about flipping patches
+def set_cell(img, cell, cell_coords, blur=True, visualise=False):
+    x_lower, y_lower, x_upper, y_upper = cell_coords
+    img[y_lower:y_upper, x_lower:x_upper] = cell
+
+    # smooth cell with background
+    # img2 = cv2.GaussianBlur(img, (1, 1), 0) # this is do nothing
+    # img2 = cv2.GaussianBlur(img, (3, 3), 0)
+    # img3 = cv2.blur(img, (2, 2))
+    # img2 = ndimage.gaussian_filter(img, sigma=.5)
+
+    # only blur edges
+    if blur:
+        img2 = cv2.blur(img, (2, 2))
+        img3 = np.copy(img)
+        img[y_lower-1:y_lower+1, x_lower:x_upper] = img2[y_lower-1:y_lower, x_lower:x_upper]
+        img[y_upper-1:y_upper+1, x_lower:x_upper] = img2[y_upper-1:y_upper+1, x_lower:x_upper]
+        img[y_lower:y_upper, x_lower-1:x_lower+1] = img2[y_lower:y_upper, x_lower-1:x_lower+1]
+        img[y_lower:y_upper, x_upper-1:x_upper+1] = img2[y_lower:y_upper, x_upper-1:x_upper+1]
+
+    if visualise:
+        plt.figure(1); plt.clf()
+        plt.imshow(img3)
+        plt.scatter(x=[x_lower, x_upper], y=[y_lower, y_upper], c='red', s=3)
+        plt.figure(2); plt.clf()
+        plt.imshow(img2)
+        plt.scatter(x=[x_lower, x_upper], y=[y_lower, y_upper], c='red', s=3)
+        plt.figure(3); plt.clf()
+        plt.imshow(img)
+        plt.scatter(x=[x_lower, x_upper], y=[y_lower, y_upper], c='red', s=3)
+        smoothed_coords = np.argwhere(img!=img3)
+        plt.scatter(x=smoothed_coords[:,1], y=smoothed_coords[:,0], c='yellow', s=1)
+    return img
+
+
 def set_patch(img, patch, patch_coords):
     x_lower, y_lower, x_upper, y_upper = patch_coords
     patch_height, patch_width = patch.shape
@@ -809,17 +881,191 @@ def remove_bad_chamber_seg_files():
     return
 
 
+# samples patches from raw images instead
+def img_sampler_helper(img_mean, img_std, num_rows, num_cols, visualise=False):
+    num_imgs = SAMPLER_CLEANED_IMGS.shape[0]
+    sample_idx = random.randint(0, num_imgs-1)
+
+    cur_preds = SAMPLER_PREDS[sample_idx,]
+    pred_threshold = 0.9  # very conservative threshold
+    chamber_limits = np.argwhere(cur_preds > pred_threshold)  # n*2 where either 1st/2nd coord below pred_threshold
+    chamber_intensities = SAMPLER_CLEANED_IMGS[sample_idx, chamber_limits[:, 0], chamber_limits[:, 1], 0]
+
+    # mean_y, mean_x = np.mean(chamber_limits, axis=0)    # careful about meaning of coordinates: 1st coord is y-axis
+    mean_x = np.mean(chamber_limits[:, 1])
+    # mean_y = np.percentile(chamber_limits[:, 0], q=25)
+    mean_y = np.mean(chamber_limits[chamber_limits[:, 1] == int(mean_x), 0])  # mid-y for central x
+
+    box_idx = random.randint(0, chamber_limits.shape[0] - 1)  # random point inside mask
+    cur_coord = chamber_limits[box_idx,]
+    cur_y, cur_x = cur_coord
+    # move towards image center
+    move_factor = 0.5  # allow some chamber border cases; 1 for less chamber border cases
+    move_factor = 1.0  # no borders as thats confusing
+    cur_x = int(cur_x + move_factor * num_cols // 2 * np.sign(mean_x - cur_x))
+    cur_y = int(cur_y + move_factor * num_rows // 2 * np.sign(mean_y - cur_y))
+
+    x1 = int(cur_x * DOWNSAMPLE_RATIO - num_cols // 2)  # rescale
+    x2 = int(cur_x * DOWNSAMPLE_RATIO + num_cols // 2)
+    y1 = int(cur_y * DOWNSAMPLE_RATIO - num_rows // 2)
+    y2 = int(cur_y * DOWNSAMPLE_RATIO + num_rows // 2)
+    cur_patch = SAMPLER_CLEANED_IMGS[sample_idx, y1:y2, x1:x2, 0]
+
+    chamber_mean = np.mean(chamber_intensities)
+    chamber_std = np.std(chamber_intensities)
+    # if np.mean(cur_patch) < chamber_mean+chamber_std:
+    if np.mean(cur_patch) < max(chamber_mean+5, 40):    # if mean_std=pixel_std/sqrt(32)
+        return cur_patch, cur_preds, sample_idx, box_idx, cur_coord, chamber_limits, chamber_mean, chamber_std, x1, x2, y1, y2
+    else:
+        return img_sampler_helper(img_mean, img_std, num_rows, num_cols, visualise)
+
+
+def img_sampler_helper2(img_mean, img_std, num_rows, num_cols, visualise=False):
+    num_imgs = SAMPLER_CLEANED_IMGS.shape[0]
+    sample_idx = random.randint(0, num_imgs-1)
+
+    cur_preds = SAMPLER_PREDS[sample_idx, ]
+    pred_threshold = 0.9  # very conservative threshold
+    # chamber_limits y_coord listed first
+    chamber_limits = np.argwhere(cur_preds > pred_threshold)  # n*2 where either 1st/2nd coord below pred_threshold
+    chamber_intensities = SAMPLER_CLEANED_IMGS[sample_idx, chamber_limits[:, 0], chamber_limits[:, 1], 0]
+
+    box_idx = random.randint(0, chamber_limits.shape[0] - 1)  # random point inside mask
+    cur_coord = chamber_limits[box_idx, ]
+    cur_y, cur_x = cur_coord
+    x1 = int(cur_x - num_cols // (2 * DOWNSAMPLE_RATIO))  # original scale
+    x2 = int(cur_x + num_cols // (2 * DOWNSAMPLE_RATIO))  # original scale
+    y1 = int(cur_y - num_cols // (2 * DOWNSAMPLE_RATIO))  # original scale
+    y2 = int(cur_y + num_cols // (2 * DOWNSAMPLE_RATIO))  # original scale
+
+    # x1 = int(cur_x * DOWNSAMPLE_RATIO - num_cols // 2)  # rescale
+    # x2 = int(cur_x * DOWNSAMPLE_RATIO + num_cols // 2)
+    # y1 = int(cur_y * DOWNSAMPLE_RATIO - num_rows // 2)
+    # y2 = int(cur_y * DOWNSAMPLE_RATIO + num_rows // 2)
+
+    # check all 4 corners in chamber limits
+    # FIXME - possible 4 corners in limits, but other parts not
+    corners = [(y1, x1), (y2, x1), (y1, x2), (y2, x2)]  # careful of order in chamber_limits
+    all_in = True
+    for corner in corners:
+        corner_idx = np.where((chamber_limits == corner).all(axis=1))[0]
+        all_in = all_in and len(corner_idx) > 0
+
+    x1 = int(x1 * DOWNSAMPLE_RATIO)
+    x2 = int(x2 * DOWNSAMPLE_RATIO)
+    y1 = int(y1 * DOWNSAMPLE_RATIO)
+    y2 = int(y2 * DOWNSAMPLE_RATIO)
+    cur_patch = SAMPLER_CLEANED_IMGS[sample_idx, y1:y2, x1:x2, 0]
+
+    # FIXME absolute intensity condition but ideally should be - if np.mean(cur_patch) > chamber_mean+chamber_std/sqrt(32):
+    if all_in and np.mean(cur_patch) < 25+15:   # 2nd condition in case bad segmentation
+        chamber_mean = np.mean(chamber_intensities)
+        chamber_std = np.std(chamber_intensities)
+
+        if visualise:
+            plt.figure(1)
+            plt.clf()
+            plt.imshow(cur_preds)
+            plt.scatter(x=cur_coord[1], y=cur_coord[0], c='red', s=1)
+
+            plt.figure(2)
+            plt.clf()
+            plt.imshow(SAMPLER_CLEANED_IMGS[sample_idx, :, :, 0])
+            plt.scatter(x=chamber_limits[:, 1]*DOWNSAMPLE_RATIO, y=chamber_limits[:, 0]*DOWNSAMPLE_RATIO, c='green', s=1)
+            plt.scatter(x=[x1, x2, x1, x2], y=[y1, y2, y2, y1], c='red', s=2)
+        return cur_patch, cur_preds, sample_idx, box_idx, cur_coord, chamber_limits, chamber_mean, chamber_std, x1, x2, y1, y2
+    else:
+        return img_sampler_helper2(img_mean, img_std, num_rows, num_cols, visualise)
+
+
+
+def img_sampler(img_mean, img_std, num_rows, num_cols, visualise=False):
+    num_imgs = SAMPLER_CLEANED_IMGS.shape[0]
+    cur_patch, cur_preds, sample_idx, box_idx, cur_coord, chamber_limits, chamber_mean, chamber_std, x1, x2, y1, y2 \
+        = img_sampler_helper2(img_mean, img_std, num_rows, num_cols, visualise)
+
+    # bad patch
+    # if np.mean(cur_patch) > chamber_mean+chamber_std:
+    if np.mean(cur_patch) > 25+15:
+        print('possible bad embedding patch; chamber_mean:{}; chamber_std:{}; patch_mean:{}; patch_std:{}'
+            .format(chamber_mean, chamber_std, np.mean(cur_patch), np.std(cur_patch)))
+
+    if visualise:
+        plt.figure(2)   # scaled prediction mask
+        plt.clf()
+        mean_x = np.mean(chamber_limits[:, 1])
+        mean_y = np.mean(chamber_limits[chamber_limits[:, 1] == int(mean_x), 0])  # mid-y for central x
+        plt.imshow(SAMPLER_PREDS[sample_idx, ])
+        plt.scatter(x=mean_x, y=mean_y, c='blue', s=2)
+        plt.scatter(x=cur_coord[1], y=cur_coord[0], c='red', s=2)
+
+        plt.figure(1)   # original scale image
+        plt.clf()
+        plt.imshow(SAMPLER_CLEANED_IMGS[sample_idx, :, :, 0])
+        plt.scatter(x=chamber_limits[:, 1] * 2, y=chamber_limits[:, 0] * 2, c='green', s=1)
+        plt.scatter(x=mean_x*DOWNSAMPLE_RATIO, y=mean_y*DOWNSAMPLE_RATIO, c='blue', s=2)
+        plt.scatter(x=cur_coord[1]*DOWNSAMPLE_RATIO, y=cur_coord[0]*DOWNSAMPLE_RATIO, c='red', s=2)
+        plt.scatter(x=[x1, x1, x2, x2], y=[y1, y2, y1, y2], c='pink', s=2)
+
+        plt.figure(3)
+        plt.clf()
+        plt.imshow(cur_patch)
+        1
+
+        # visualise all imgs vs preds for good images - to double check
+        if 0:
+            for idx in range(num_imgs):
+                cur_preds = SAMPLER_PREDS[idx,]
+                cur_orig = SAMPLER_CLEANED_IMGS[idx, :, :, 0]
+                plt.figure(2); plt.clf()
+                plt.imshow(cur_preds)
+                plt.figure(1); plt.clf()
+                plt.imshow(cur_orig)
+                pred_threshold = .9
+                chamber_limits = np.argwhere(cur_preds > pred_threshold)
+                plt.scatter(x=chamber_limits[:, 1]*DOWNSAMPLE_RATIO, y=chamber_limits[:, 0]*DOWNSAMPLE_RATIO, c='red', s=1)
+                # mean_y, mean_x = np.mean(chamber_limits, axis=0)
+                mean_x = np.mean(chamber_limits[:, 1])
+                # mean_y = np.percentile(chamber_limits[:, 0], q=25)
+                mean_y = np.mean(chamber_limits[chamber_limits[:, 1] == int(mean_x), 0])  # mid-y for central x
+                plt.scatter(x=mean_x*DOWNSAMPLE_RATIO, y=mean_y*DOWNSAMPLE_RATIO, c='blue', s=2)
+                plt.title(SAMPLER_IMG_NAMES[idx])
+                1
+                # input("Press Enter to continue...")
+
+    return cur_patch
+
+
+def bad_seg_file_names():
+    bad_file_path = '{}/{}'.format('./accell', 'bad_chamber_seg.txt')
+    bad_files = []
+    with open(bad_file_path) as fin:
+        for l in fin:
+            bad_files.append(l.rstrip())
+    return bad_files
+
+
+def img_generator(img_mean, img_std, num_rows, num_cols):
+    # create blank/noisy background
+    adj_factor = 1.5 if NOISIER else 3.0
+    img = np.round(np.random.normal(img_mean, img_std/adj_factor, (num_rows, num_cols)))
+    img[img < 0] = 1
+    return img
+
+
 # ac cells on blank/background noise data
-def create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=10000):
+def create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=10000, img_fun=img_generator, visualise=False):
     seg_img_names, ds_imgs_seg, raw_imgs_seg = get_accell_img_data(mode='segmented')
     all_cell_data = get_all_ac_cells(seg_img_names, raw_imgs_seg, threshold=0, visualise=False)
     img_mean = np.mean(ds_imgs_seg)
     img_std = np.std(ds_imgs_seg)
 
     if platform == "linux" or platform == "linux2":
-        base_folder = '/home/yue/pepple/accell/blank_{}_{}{}'.format(num_rows, num_cols, '_noisy' if NOISIER else '')
+        # base_folder = '/home/yue/pepple/accell/blank_{}_{}{}'.format(num_rows, num_cols, '_noisy' if NOISIER else '')
+        base_folder = '/home/yue/pepple/accell/blank_{}_{}{}'.format(num_rows, num_cols, '_realistic2' if NOISIER else '')
     else:
-        base_folder = './accell/blank_{}_{}{}'.format(num_rows, num_cols, '_noisy' if NOISIER else '')
+        # base_folder = './accell/blank_{}_{}{}'.format(num_rows, num_cols, '_noisy' if NOISIER else '')
+        base_folder = './accell/blank_{}_{}{}'.format(num_rows, num_cols, '_realistic2' if NOISIER else '')
 
     train_folder = '{}/train'.format(base_folder)
     valid_folder = '{}/valid'.format(base_folder)
@@ -833,24 +1079,28 @@ def create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=10000):
     cell_train = all_cell_data[:num_coords_train, ]
 
     for idx in range(num_samples):
-        cur_img, coords, mid_coords = create_blank_ac_cell_img(cell_train, img_mean, img_std, num_rows=num_rows,
-                                                               num_cols=num_cols)
+        cur_img = img_fun(img_mean, img_std, num_rows=num_rows, num_cols=num_cols)
+        cur_img, coords, mid_coords = create_blank_ac_cell_img(cell_train, cur_img)
 
         img_name = '{}/training_{}.png'.format(train_folder, idx)
         cv2.imwrite(img_name, cur_img)
 
+        if visualise:
+            plt.imshow(cur_img)
+            plt.scatter(x=mid_coords[:, 0], y=mid_coords[:, 1], c='red', s=1)
+
         with open('{}/training_coords.txt'.format(base_folder), 'a') as fout:
             for coord in coords:
                 vals = [img_name, str(coord[0]), str(coord[1]), str(coord[2]), str(coord[3]), 'cell']
-                print(','.join(vals))
+                # print(','.join(vals))
                 fout.write('{}\n'.format(','.join(vals)))
 
     # validation data
-    num_test = int(num_samples * .2)
+    num_test = int(num_samples * .1)
     cell_valid = all_cell_data[num_coords_train:, ]
     for idx in range(num_test):
-        cur_img, coords, mid_coords = create_blank_ac_cell_img(cell_train, img_mean, img_std, num_rows=num_rows,
-                                                               num_cols=num_cols)
+        cur_img = img_fun(img_mean, img_std, num_rows=num_rows, num_cols=num_cols)
+        cur_img, coords, mid_coords = create_blank_ac_cell_img(cell_train, cur_img)
 
         img_name = '{}/test_{}.png'.format(valid_folder, idx)
         cv2.imwrite(img_name, cur_img)
@@ -858,24 +1108,20 @@ def create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=10000):
         with open('{}/valid_coords.txt'.format(base_folder), 'a') as fout:
             for coord in coords:
                 vals = [img_name, str(coord[0]), str(coord[1]), str(coord[2]), str(coord[3]), 'cell']
-                print(','.join(vals))
+                # print(','.join(vals))
                 fout.write('{}\n'.format(','.join(vals)))
     return
 
 
-def create_blank_ac_cell_img(cell_data, img_mean, img_std, num_rows, num_cols, visualise=False):
+def create_blank_ac_cell_img(cell_data, img, visualise=False):
     num_patches, _, _ = cell_data.shape
-
-    # create blank/noisy background
-    adj_factor = 1.5 if NOISIER else 3.0
-    img = np.round(np.random.normal(img_mean, img_std/adj_factor, (num_rows, num_cols)))
-    img[img < 0] = 1
+    num_rows, num_cols = img.shape
     raw_img = np.copy(img)
 
     # add cells
     max_cells = num_rows*num_cols / (cell_size * cell_size)
-    cell_upper = int(max_cells * .3*.1)
-    cell_lower = int(max_cells * .1*.1)
+    cell_upper = int(max_cells * .3*.5)     # up to 32*32/25*.3*.5 = 12*.5 = 6 cells per image
+    cell_lower = int(max_cells * .1*.25)    # at least 1 cell in image for useful training
     num_samples = random.randint(cell_lower, cell_upper)
 
     mean_x = num_cols/2.
@@ -884,22 +1130,39 @@ def create_blank_ac_cell_img(cell_data, img_mean, img_std, num_rows, num_cols, v
     coords = np.zeros((0, 4), dtype=np.uint8)  # pre-allocate
     for idx in range(num_samples):
         rand_ind = random.choice(range(0, num_patches))
-        rand_patch = cell_data[rand_ind, ]
+        rand_cell = cell_data[rand_ind, ]
 
         # random coord in img
         cur_y, cur_x = random.randint(0, num_rows-1), random.randint(0, num_cols-1)
         # move towards img center
-        new_x = int(cur_x + cell_size * np.sign(mean_x - cur_x))
-        new_y = int(cur_y + cell_size * np.sign(mean_y - cur_y))
+        # new_x = int(cur_x + np.ceil(cell_size/2) * np.sign(mean_x - cur_x))
+        # new_y = int(cur_y + np.ceil(cell_size/2) * np.sign(mean_y - cur_y))
+
+        # border conditions
+        new_x = cur_x
+        new_y = cur_y
+        if cur_x <= cell_size/2:
+            new_x = int(cell_size/2)+1
+        elif cur_x >= num_cols - cell_size/2:
+            new_x = int(num_cols - cell_size/2 -1)
+        if cur_y <= cell_size/2:
+            new_y = int(cell_size/2) +1
+        elif cur_y >= num_rows - cell_size/2:
+            new_y = int(num_rows - cell_size/2 -1)
 
         # avoid overlapping
-        mid_coord = (new_y, new_x)
+        mid_coord = (new_x, new_y)
         overlapping_new = is_overlapping(mid_coords, mid_coord)
         if not overlapping_new:
             # set patch
             x_lower, y_lower, x_upper, y_upper = make_box_coords(new_x, new_y, img_shape=img.shape)
             new_coord = x_lower, y_lower, x_upper, y_upper
-            img = set_patch(img, rand_patch, (x_lower, y_lower, x_upper, y_upper))
+            # FIXME - blur cell into background
+            # double check cells have been centered
+            # img = set_patch(img, rand_cell, (x_lower, y_lower, x_upper, y_upper))
+            if img[y_lower:y_upper, x_lower:x_upper].shape != (cell_size, cell_size):
+                print('cur_x={}; cur_y={}; new_x={}; new_y={}; new_coord={}'.format(cur_x, cur_y, new_x, new_y, new_coord))
+            img = set_cell(img, rand_cell, (x_lower, y_lower, x_upper, y_upper), blur=False)
             mid_coords = np.append(mid_coords, np.reshape(np.asarray(mid_coord), (1, 2)), axis=0)
             coords = np.append(coords, np.reshape(np.asarray(new_coord), (1, 4)), axis=0)
 
@@ -917,6 +1180,54 @@ def create_blank_ac_cell_img(cell_data, img_mean, img_std, num_rows, num_cols, v
     return img, coords, mid_coords
 
 
+def review_blank_accell_data(folder):
+    true_coords_dict = get_true_coords(folder, coord_file='training_coords.txt')
+    from analyseCellPreds import patch_stats
+
+    img_folder = os.path.join(folder, 'train')
+    img_files = os.listdir(img_folder)
+    for img_file in img_files:
+        img = cv2.imread(os.path.join(img_folder, img_file), cv2.IMREAD_GRAYSCALE)
+        img_coords = true_coords_dict[img_file]
+        plot_img_boxes(img_file, img, img_coords)
+        print(patch_stats(img))
+    return
+
+
+def get_true_coords(folder, coord_file='training_coords.txt'):
+    true_dict = {}
+
+    with open(os.path.join(folder, coord_file)) as fin:
+        for l in fin:
+            arr = l.rstrip().split(",")  # faster-rcnn input format
+            file_name = arr[0].split('/')[-1]
+            cur_coord = [tuple([int(a) for a in arr[1:-1]])]
+            if file_name in true_dict:
+                true_dict[file_name] += cur_coord
+            else:
+                true_dict[file_name] = cur_coord
+    return true_dict
+
+
+def plot_img_boxes(key, img, box_data):
+    fig1, ax1 = plt.subplots(1)
+    ax1.imshow(img)
+    for box_coords in box_data:
+        x1, y1, x2, y2 = box_coords
+        if y1 > RAW_IMAGE_HEIGHT or y2 > RAW_IMAGE_HEIGHT:
+            print('y sizing issue for {}; coords={}'.format(key, box_coords))
+        if x1 > RAW_IMAGE_WIDTH or x2 > RAW_IMAGE_WIDTH:
+            print('y sizing issue for {}; coords={}'.format(key, box_coords))
+        ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='white', linewidth=1))
+    return
+
+
+# scale using imagemagick, predict on scaled, cubic interpolate back to original
+def predict_raw_imgs():
+    predict_chamber()
+    return
+
+
 if __name__ == '__main__':
     # 1st iteration
     # make_test_images()
@@ -925,9 +1236,32 @@ if __name__ == '__main__':
     ## with augmented data
     # make_augmented_image_data()
     # make_test_images(is_aug=2, nrows=320, ncols=128)  # make original test data for ac cells (different image sizes)
-    create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=10000)
+    # create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=10000)
     # create_blank_ac_cell_data(num_rows=320, num_cols=128, num_samples=10000)
-    create_blank_ac_cell_data(num_rows=128, num_cols=128, num_samples=10000)
+    # create_blank_ac_cell_data(num_rows=128, num_cols=128, num_samples=10000)
+
+    # review_blank_accell_data(folder=os.path.join('accell', 'blank_32_32'))
+    # give it more realistic background
+    raw_filename = '{}/raw_images_clean.npy'.format(augmented_folder_master)
+    SAMPLER_CLEANED_IMGS = np.load(raw_filename)
+    bad_seg_files = bad_seg_file_names()
+    # bad_seg_base = ['_'.join(x.split('_')[1:]) for x in bad_seg_files]
+    # pnames = sorted(list(glob.glob('{}/*.png'.format(img_folder))))
+    pnames = sorted(os.listdir(img_folder))
+    pnames = [x for x in pnames if '.png' in x and 'mask' not in x]
+    # pnames_base = ['_'.join(x.split('_')[1:]) for x in pnames]
+    good_seg_idx = []
+    for idx, pname in enumerate(pnames):
+        if pname.replace('.png', '') not in bad_seg_files:
+            good_seg_idx.append(idx)
+            SAMPLER_IMG_NAMES.append(pname)
+    SAMPLER_CLEANED_IMGS = SAMPLER_CLEANED_IMGS[good_seg_idx, ]  # remove bad segs
+    combined_preds_file = 'combined_preds.npy'
+    combined_preds_path = '{}/{}'.format(augmented_folder_master, combined_preds_file)
+    SAMPLER_PREDS = np.load(combined_preds_path)
+    SAMPLER_PREDS = SAMPLER_PREDS[good_seg_idx, :]  # remove bad segs
+
+    create_blank_ac_cell_data(num_rows=32, num_cols=32, num_samples=50000, img_fun=img_sampler)
 
     # get_best_chamber_preds()
     # debug_chamber_segmentations()   # check chambers segmented properly

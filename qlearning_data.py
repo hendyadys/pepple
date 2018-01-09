@@ -113,7 +113,7 @@ def get_coords(json_data):
     for coord in json_data:
         cur_xs = coord['mousex']
         cur_ys = coord['mousey']
-        if len(cur_xs)>len(xs):
+        if len(cur_xs) > len(xs):
             xs = cur_xs
             ys = cur_ys
     return xs, ys

@@ -10,47 +10,67 @@ import numpy as np
 import glob
 import matplotlib
 import matplotlib.pyplot as plt
+import os
 
 # from train import get_unet, dice_coef, K
 from train import get_unet
-from data import load_valid_data, load_train_data, load_sliced_data, slice_data
+from data import load_valid_data, load_train_data, load_sliced_data, slice_data, load_data_including_empty, \
+    load_original_data_including_empty
+from make_bbox_data import downsample
 
 from sys import platform
 if platform == "linux" or platform == "linux2":
     # # horizontal slice transform
     # results_base = '/home/yue/pepple/runs/2017-08-07-17-15-40'
-    # results_folder = '/home/yue/pepple/runs/2017-08-07-17-15-40/weights'
-    # results_figs = '/home/yue/pepple/runs/2017-08-07-17-15-40/figs'
     # test_weights = 'weights-improvement-049--0.88935424.hdf5'
 
-    results_base = '/home/yue/pepple/runs/2017-08-09-10-20-24'
-    results_folder = '/home/yue/pepple/runs/2017-08-09-10-20-24/weights'
-    results_figs = '/home/yue/pepple/runs/2017-08-09-10-20-24/figs'
-    test_weights = 'weights-improvement-050--0.95407502.hdf5'
+    # # vertical transform
+    # results_base = '/home/yue/pepple/runs/2017-08-09-10-20-24'
+    # test_weights = 'weights-improvement-050--0.95407502.hdf5'
 
     # # vertical slice transform longer version with lr=1e-7 for making movies
     # results_base = '/home/yue/pepple/runs/2017-08-09-19-02-27'
-    # results_folder = '/home/yue/pepple/runs/2017-08-09-19-02-27/weights'
-    # results_figs = '/home/yue/pepple/runs/2017-08-09-19-02-27/figs'
     # test_weights = 'weights-improvement-378--0.91209759.hdf5'   # still improving when crashed
+
+    # with empty seg training data
+    results_base = '/home/yue/pepple/runs/2017-11-09-10-26-19'
+    # test_weights = 'weights-improvement-025--0.95883078.hdf5'
+    # test_weights = 'weights-improvement-050--0.95777710.hdf5'
+    test_weights = 'weights-improvement-100--0.96128662.hdf5'
+
+    # re-ran vertical transform (lr=1e-5)
+    results_base = '/home/yue/pepple/runs/2017-11-09-23-47-29'
+    # test_weights = 'weights-improvement-025--0.96921231.hdf5'
+    # test_weights = 'weights-improvement-050--0.97040034.hdf5'
+    test_weights = 'weights-improvement-100--0.96851523.hdf5'
 elif platform == "win32":
     # # horizontal slice transform
-    # results_folder = './runs/run2/weights'
-    # results_figs = './runs/run2/figs'
     # results_base = './runs/run2'
     # test_weights = 'weights-improvement-049--0.88935424.hdf5'
 
     # vertical slice transform
-    results_folder = './runs/runVertical/weights'
-    results_figs = './runs/runVertical/figs'
     results_base = './runs/runVertical'
     test_weights = 'weights-improvement-050--0.95407502.hdf5'
 
     # # vertical slice transform longer version with lr=1e-7
-    # results_folder = './runs/runVertical2/weights'
-    # results_figs = './runs/runVertical2/figs'
     # results_base = './runs/runVertical2'
     # test_weights = 'weights-improvement-378--0.91209759.hdf5'   # still improving when crashed
+
+    results_base = './runs/runEmptySeg'
+    # test_weights = 'weights-improvement-025--0.95883078.hdf5'
+    # test_weights = 'weights-improvement-050--0.95777710.hdf5'
+    test_weights = 'weights-improvement-100--0.96128662.hdf5'
+
+    # re-ran vertical transform (lr=1e-5)
+    results_base = './runs/runVerticalNew'
+    # test_weights = 'weights-improvement-025--0.96921231.hdf5'
+    # test_weights = 'weights-improvement-050--0.97040034.hdf5'
+    test_weights = 'weights-improvement-100--0.96851523.hdf5'
+
+# results_figs = '{}/{}'.format(results_base, 'figs')
+# results_folder = '{}/{}'.format(results_base, 'weights')
+results_figs = os.path.join(results_base, 'figs')
+results_folder = os.path.join(results_base, 'weights')
 
 img_rows = 512
 img_cols = 512
@@ -87,42 +107,45 @@ def load_validation_data():
     return imgs_valid, imgs_mask_valid, params
 
 
-# def analyse():
-#     plt.switch_backend('agg')
-#     model = get_unet()
-#     imgs_valid, imgs_mask_valid, params = load_validation_data()
-#
-#     pnames = sorted(list(glob.glob('%s/weights*.hdf5' % results_folder)))
-#     print(results_folder, len(pnames))
-#
-#     img_num = len(imgs_valid) - 1
-#     img_num = 9140  # somewhat more intuitive segment
-#     # plt.imsave('%s/orignal_input.png' % results_figs, imgs_valid[img_num,:,:,0])
-#     cur_valid = imgs_valid[img_num, :, :, 0]
-#     plt.imshow(cur_valid)
-#     plt.title('orignal input')
-#     plt.savefig('%s/orignal_input.png' % results_figs, bbox_inches='tight')
-#
-#     cur_mask = imgs_mask_valid[img_num, :, :, 0]
-#     plt.imshow(cur_mask)
-#     plt.title('actual target')
-#     plt.savefig('%s/target.png' % results_figs, bbox_inches='tight')
-#
-#     for pname in pnames:
-#         # p_toks = pname.split('-')
-#         p_toks = pname.split('--')
-#         epoch_num = p_toks[0].split('-')[-1]
-#         val_dice = float(p_toks[1].split('.hdf5')[0])
-#         print('processing %s; epoch:%s; val_dice=%f' % (pname, epoch_num, val_dice))
-#
-#         model.load_weights(pname)
-#         output = model.predict(cur_valid.reshape(1, cropped_rows, cropped_cols, 1), batch_size=1)  # inference step
-#         plt.imshow(output[0,:,:,0])
-#         plt.title(pname)
-#         plt.savefig('%s/%s.png' % (results_figs, epoch_num), bbox_inches='tight')
-#         print('after model predict:', output.shape)
-#
-#     return 1
+def analyse():
+    # plt.switch_backend('agg')
+    model = get_unet()
+    imgs_valid, imgs_mask_valid, params = load_validation_data()
+    # imgs_train, imgs_mask_train, imgs_valid, imgs_mask_valid = load_data_including_empty_sliced()
+    # imgs_train, imgs_mask_train, params = center_scale_imgs(imgs_train, imgs_mask_train)
+    # imgs_valid, imgs_mask_valid, params = center_scale_imgs(imgs_valid, imgs_mask_valid)
+
+    pnames = sorted(list(glob.glob('%s/weights*.hdf5' % results_folder)))
+    print(results_folder, len(pnames))
+
+    img_num = len(imgs_valid) - 1
+    img_num = 10  # somewhat more intuitive segment
+    # plt.imsave('%s/orignal_input.png' % results_figs, imgs_valid[img_num,:,:,0])
+    cur_valid = imgs_valid[img_num, :, :, 0]
+    plt.imshow(cur_valid)
+    plt.title('orignal input')
+    # plt.savefig('%s/orignal_input.png' % results_figs, bbox_inches='tight')
+
+    cur_mask = imgs_mask_valid[img_num, :, :, 0]
+    plt.imshow(cur_mask)
+    plt.title('actual target')
+    # plt.savefig('%s/target.png' % results_figs, bbox_inches='tight')
+
+    for pname in pnames:
+        # p_toks = pname.split('-')
+        p_toks = pname.split('--')
+        epoch_num = p_toks[0].split('-')[-1]
+        val_dice = float(p_toks[1].split('.hdf5')[0])
+        print('processing %s; epoch:%s; val_dice=%f' % (pname, epoch_num, val_dice))
+
+        model.load_weights(pname)
+        output = model.predict(cur_valid.reshape(1, cropped_rows, cropped_cols, 1), batch_size=1)  # inference step
+        plt.imshow(output[0,:,:,0])
+        plt.title(pname)
+        plt.savefig('%s/%s.png' % (results_figs, epoch_num), bbox_inches='tight')
+        print('after model predict:', output.shape)
+
+    return 1
 
 
 def plot_loss(filename):
@@ -136,7 +159,7 @@ def plot_loss(filename):
 
     if 'train' in filename:
         # plt.plot(iter[0::20], loss_val[0::20])
-        k = 21
+        k = 20
         plt.plot(iter[0::k], np.mean(np.array(loss_val).reshape(-1, k), axis=1))
     else:
         plt.plot(iter, loss_val)
@@ -342,6 +365,7 @@ def plot_translation_results():
     return
 
 
+# rotate image then predict
 def rotation_test2():
     model = get_unet()
     imgs_strips, imgs_mask_strips, params = load_validation_data()
@@ -398,6 +422,7 @@ def rotation_test2():
     return val_dice_losses
 
 
+# translate image and then predict
 def translation_test2(direction=0, max_displacement=21):  # 0 for left, 1 for right, 2 for bothdef rotation_test2():
     model = get_unet()
     imgs_strips, imgs_mask_strips, params = load_validation_data()
@@ -533,7 +558,7 @@ def make_movie_images_new(img_num, transform=0, transform_amount=0):
     return 1
 
 
-def combine_img(strip_preds, real_mean=False):
+def combine_img(strip_preds, num_aug=num_aug, img_rows=img_rows, img_cols=img_cols, real_mean=False):
     aligned_img = np.ndarray((num_aug, img_rows, img_cols), dtype=np.float32)
     num_cols = int((img_cols - cropped_cols) / pixel_overlap)
     for i in range(0, num_aug):
@@ -553,12 +578,14 @@ def combine_img(strip_preds, real_mean=False):
 
 
 # whole image dice computation stuff
-def combine_predicted_strips_into_image(img_preds, img_num, debug_mode=False):
+def combine_predicted_strips_into_image(img_preds, img_num, num_aug=num_aug, img_rows=img_rows, img_cols=img_cols,
+                                        output_folder=results_figs, debug_mode=False):
     img_start = img_num*num_aug
-    combined_img_pred = combine_img(img_preds[img_start:img_start+num_aug, ], real_mean=True)
+    combined_img_pred = combine_img(img_preds[img_start:img_start+num_aug, ], num_aug=num_aug, img_rows=img_rows,
+                                    img_cols=img_cols, real_mean=True)
 
     if debug_mode:
-        plt.imsave('%s/recon_%d.png' % (results_figs, img_num), combined_img_pred)
+        plt.imsave('%s/recon_%d.png' % (output_folder, img_num), combined_img_pred)
     return combined_img_pred
 
 
@@ -576,14 +603,21 @@ def calculate_whole_img_dice(model, weights, imgs_whole, masks_whole, imgs_strip
     # load and predict
     model.load_weights(weights)
     output = model.predict(imgs_strips, batch_size=10)  # inference step
+    weight_epoch = weights.split('-')[-3]
     if debug_mode:
-        np.save('%s/all_preds.npy' % (results_base), output)
+        np.save('%s/all_preds_%s.npy' % (results_base, weight_epoch), output)
     print('output shape:', output.shape)  # should be (28*96)*496*128*1
 
     # combine img for val_dice
+    # update result_figs to allow runs of multiple weight files
+    output_folder = os.path.join(results_base, 'figs', weight_epoch)
+    print('output_folder={}'.format(output_folder))
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
     predicted_imgs = np.ndarray(imgs_shape, dtype=np.float32)   # for tensor dice calculation
     for j in range(0, imgs_shape[0]):  # for each image
-        predicted_imgs[j, :, :, 0] = combine_predicted_strips_into_image(output, j, debug_mode=debug_mode)
+        predicted_imgs[j, :, :, 0] = combine_predicted_strips_into_image(output, j, output_folder=output_folder, debug_mode=debug_mode)
 
     # compute dice on original image - padding
     masks_strips = masks_strips.astype(np.float32)
@@ -592,6 +626,10 @@ def calculate_whole_img_dice(model, weights, imgs_whole, masks_whole, imgs_strip
     strip_dice = dice_coef_np(masks_strips, output)
     whole_dice = dice_coef_np(masks_whole, predicted_imgs)
     whole_dice_no_padding = dice_coef_np(masks_whole[:, :, :500, ], predicted_imgs[:, :, :500, :])
+
+    if debug_mode:
+        print('epoch_num={}; strip_dice={}; whole_dice={}; whole_dice_np_padding={}'
+              .format(weight_epoch, strip_dice, whole_dice, whole_dice_no_padding))
     return predicted_imgs, strip_dice, whole_dice, whole_dice_no_padding
 
 
@@ -709,7 +747,245 @@ def predict_problem_img(file_name):
     return
 
 
+# should make data_fun with same generic output setup
+def predict_images(sliced_data_fun, orig_data_fun, weight_file=test_weights, save_imgs=True):
+    imgs_orig, imgs_mask_orig, imgs_valid, imgs_mask_valid = _predict_image_helper(sliced_data_fun, orig_data_fun, weight_file, save_imgs)
+
+    model = get_unet()
+    weight_path = '{}/{}'.format(results_folder, weight_file)
+    print('predict_images; weight_path={}'.format(weight_path))
+    predicted_imgs, strip_dice, whole_dice, whole_dice_no_padding = \
+        calculate_whole_img_dice(model, weight_path, imgs_orig, imgs_mask_orig, imgs_valid, imgs_mask_valid,
+                                 debug_mode=save_imgs)
+    # calculate_whole_img_dice(model, weights, imgs_whole, masks_whole, imgs_strips, masks_strips, debug_mode=False)
+    return predicted_imgs, strip_dice, whole_dice, whole_dice_no_padding
+
+
+def _predict_image_helper(sliced_data_fun, orig_data_fun, weight_file=test_weights, save_imgs=True):
+    seg_sliced, seg_masks_sliced, empty_seg_sliced, empty_masks_sliced = sliced_data_fun()
+    seg_orig, seg_masks_orig, empty_seg_orig, empty_masks_orig = orig_data_fun()
+
+    # split into training and val - well just validation for assessment
+    train_val_split = 0.8
+    num_imgs, _, _, _ = seg_orig.shape  # this is conservative compared to generators which are on sliced strips
+    num_imgs_train = int(num_imgs * train_val_split)
+    num_empty, _, _, _ = empty_seg_orig.shape
+    num_empty_train = int(min(num_empty * train_val_split, .2 * num_imgs_train))  # limit empty to 16% of training data
+
+    imgs_orig = np.concatenate((seg_orig[num_imgs_train:, ], empty_seg_orig[num_empty_train:, ]), axis=0)   # validation originals
+    imgs_mask_orig = np.concatenate((seg_masks_orig[num_imgs_train:, ], empty_masks_orig[num_empty_train:, ]), axis=0)  # validation originals
+
+    val_start = num_imgs_train * num_aug  # 512*500 sliced into 96 strips
+    seg_sliced_valid = seg_sliced[val_start:, ]
+    seg_masks_sliced_valid = seg_masks_sliced[val_start:, ]
+
+    val_start_empty = num_empty_train * num_aug  # 512*500 sliced into 96 strips
+    empty_seg_sliced_valid = empty_seg_sliced[val_start_empty:, ]
+    empty_masks_sliced_valid = empty_masks_sliced[val_start_empty:, ]
+    seg_valid = np.concatenate((seg_sliced_valid, empty_seg_sliced_valid), axis=0)
+    masks_valid = np.concatenate((seg_masks_sliced_valid, empty_masks_sliced_valid), axis=0)
+
+    # normalize data according to training setup
+    imgs_orig, imgs_mask_orig, params = center_scale_imgs(imgs_orig, imgs_mask_orig)  # normalize
+    imgs_valid, imgs_mask_valid, params = center_scale_imgs(seg_valid, masks_valid)  # normalize
+    return imgs_orig, imgs_mask_orig, imgs_valid, imgs_mask_valid
+
+
+def check_predicted_images(sliced_data_fun, orig_data_fun, weight_file=test_weights, save_imgs=True):
+    imgs_orig, imgs_mask_orig, imgs_valid, imgs_mask_valid = _predict_image_helper(sliced_data_fun, orig_data_fun, weight_file, save_imgs)
+    imgs_shape = imgs_orig.shape
+
+    weight_epoch = weight_file.split('-')[-3]
+    pred_output = np.load('%s/all_preds_%s.npy' % (results_base, weight_epoch))
+    # print('output shape:', pred_output.shape)
+
+    predicted_imgs = np.ndarray(imgs_shape, dtype=np.float32)   # for tensor dice calculation
+    for j in range(0, imgs_shape[0]):  # for each image
+        predicted_imgs[j, :, :, 0] = combine_predicted_strips_into_image(pred_output, j, debug_mode=False)
+
+    # combine img for val_dice
+    output_folder = os.path.join(results_base, 'figs', weight_epoch)
+    print('output_folder={}'.format(output_folder))
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    if save_imgs:   # save subplot images
+        for j in range(imgs_shape[0]):
+            f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharey=True)
+            ax1.imshow(imgs_orig[j, :, :, 0])
+            ax1.set_title('Original OCT scan')
+            ax2.imshow(imgs_mask_orig[j, :, :, 0])
+            ax2.set_title('Labelled Mask')
+            ax3.imshow(predicted_imgs[j, :, :, 0])
+            ax3.set_title('Predicted Mask')
+            f.savefig('{}/pred_{}.png'.format(output_folder, j), bbox_inches='tight')
+
+    # compute dice on original image - padding
+    masks_strips = imgs_mask_valid.astype(np.float32)
+    masks_whole = imgs_mask_orig.astype(np.float32)
+    # print(imgs_mask_valid.dtype, output.dtype, imgs_mask_orig.dtype, predicted_val_imgs.dtype)
+    strip_dice = dice_coef_np(masks_strips, pred_output)
+    whole_dice = dice_coef_np(masks_whole, predicted_imgs)
+    whole_dice_no_padding = dice_coef_np(masks_whole[:, :, :500, ], predicted_imgs[:, :, :500, :])
+    return strip_dice, whole_dice, whole_dice_no_padding
+
+
+def predict_image_mask(model, img, stack_mean=None, stack_std=None):     # weights pre-loaded in model
+    # img, _, _ = center_scale_imgs(img, img)  # normalize
+    # rescale to 0,1
+    if not stack_mean:
+        stack_mean = np.mean(img)  # mean for data centering
+        stack_std = np.std(img)  # std for data normalization
+    img = img.astype('float32')
+    img -= stack_mean
+    img /= stack_std
+
+    num_images = 1
+    image_row, image_cols = img.shape
+    img = img.reshape((num_images, image_row, image_cols, 1))
+    imgs_strips, mask_strips = slice_data(img, img, save_data=False)
+
+    output = model.predict(imgs_strips, batch_size=10)  # inference step
+    # output = imgs_strips    # for testing code purposes
+    print('output shape:', output.shape)  # should be (28*96)*496*128*1
+
+    # combine img for val_dice
+    raw_rows = image_row
+    raw_cols = image_cols
+    raw_aug = (raw_rows - cropped_rows)/pixel_overlap * (raw_cols - cropped_cols)/pixel_overlap
+    # predicted_imgs = np.ndarray(imgs_shape, dtype=np.float32)  # for tensor dice calculation
+    # for j in range(0, num_images):  # for each image
+    #     mask_pred = combine_predicted_strips_into_image(output, j, num_aug=int(raw_aug), img_rows=raw_rows, img_cols=raw_cols,
+    #                                                 debug_mode=False)
+    #     predicted_imgs[j, :, :, 0] = mask_pred
+    mask_pred = combine_predicted_strips_into_image(output, 0, num_aug=int(raw_aug), img_rows=raw_rows, img_cols=raw_cols,
+                                                    debug_mode=False)
+
+    # some debug code
+    if 0:
+        k = 200
+        temp_img = imgs_strips[k, ].reshape(1, cropped_rows, cropped_cols, 1)
+        # temp_img -= np.mean(temp_img)
+        # temp_img /= np.std(temp_img)
+        plt.figure(1)
+        plt.imshow(temp_img[0, :, :, 0])
+        temp_pred = model.predict(temp_img, batch_size=10)
+        plt.figure(2)
+        plt.imshow(temp_pred[0, :, :, 0])
+
+        # naive test with downsampling
+        ds_img = downsample(img)
+        ds_strips, _ = slice_data(ds_img, ds_img, save_data=False)
+        l = 10
+        temp_ds = ds_strips[l, ].reshape(1, cropped_rows, cropped_cols, 1)
+        plt.figure(5)
+        plt.imshow(temp_ds[0, :, :, 0])
+        ds_pred = model.predict(temp_ds, batch_size=10)
+        plt.figure(6)
+        plt.imshow(ds_pred[0, :, :, 0])
+
+        train_data = np.load('./npy/sliced_vertical_no_pepple.npy')
+        params = load_params()
+        train_data -= params[0]
+        train_data /= params[1]
+        j = 100
+        train_img = train_data[j, ].reshape(1, cropped_rows, cropped_cols, 1)
+        plt.figure(3)
+        plt.imshow(train_img[0, :, :, 0])
+        train_pred = model.predict(train_img, batch_size=10)
+        plt.figure(4)
+        plt.imshow(train_pred[0, :, :, 0])
+    # return predicted_imgs
+    return mask_pred, output
+
+
+def predict_stack(do_save=True):
+    model = get_unet()
+    weight_path = '{}/{}'.format(results_folder, test_weights)
+    print('predict_stack; weight_path={}'.format(weight_path))
+    model.load_weights(weight_path)
+
+    import os, cv2
+    if platform == "linux" or platform == "linux2":
+        # stack_base_folder = '/home/ayl/data/pepple/Inflamed'
+        stack_base_folder = '/home/ayl/data/pepple/Uninflamed'
+    else:
+        stack_base_folder = './acseg/Uninflamed'
+
+    stack_folders = [dI for dI in os.listdir(stack_base_folder ) if os.path.isdir(os.path.join(stack_base_folder, dI))]
+    # for stack_folder in stack_folders:
+    for stack_folder in [stack_folders[0]]:     # one folder for now
+        stack_images = os.listdir('{}/{}'.format(stack_base_folder, stack_folder))
+        stack_img_data = np.ndarray((len(stack_images), 1024, 1000), dtype=np.float32)
+
+        for idx, img_name in enumerate(stack_images):
+            img_path = os.path.join(stack_base_folder, stack_folder, img_name)
+            cur_img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+            stack_img_data[idx, ] = cur_img
+
+
+        ds_images = downsample(stack_img_data)
+        stack_mean = np.mean(ds_images)
+        stack_std = np.std(ds_images)
+        ds_shape = ds_images.shape
+        pred_masks = np.ndarray((ds_shape[0], ds_shape[1], ds_shape[2]), dtype=np.float32)
+        for idx, img_name in enumerate(stack_images):
+            img_name = '20170710mouse1_Day-7_Left (692).TIFF'
+            idx = stack_images.index(img_name)
+            cur_img = ds_images[idx, ]
+            pred_mask = predict_image_mask(model, cur_img, stack_mean=stack_mean, stack_std=stack_std)
+            pred_masks[idx, ] = pred_mask
+
+        # pred_masks = predict_image_mask(model, stack_img_data)
+        # pred_masks[idx, ] = pred_mask
+
+            if do_save:
+            # for idx, img_name in enumerate(stack_images):
+                stack_pred_folder = '{}/{}_pred'.format(results_base, stack_folder)
+                if not os.path.exists(os.path.join(stack_base_folder, stack_pred_folder)):
+                    os.makedirs(os.path.join(stack_base_folder, stack_pred_folder))
+                pred_mask_img_path = os.path.join(stack_base_folder, stack_pred_folder, img_name.replace('.TIFF', '_pred.tiff'))
+                print('pred_mask_path={}'.format(pred_mask_img_path))
+                plt.imshow(pred_mask)
+                plt.savefig(pred_mask_img_path)
+
+        np.save('{}/{}_pred.npy'.format(results_base, stack_folder), pred_masks)
+    return
+
+
 if __name__ == '__main__':
+    # # pass in data function; set weights files at top
+    # results_base = '/home/yue/pepple/runs/2017-11-09-10-26-19'
+    # results_folder = os.path.join(results_base, 'weights')
+    # predict_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-025--0.95883078.hdf5', save_imgs=True)
+    # predict_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-050--0.95777710.hdf5', save_imgs=True)
+    # predict_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-100--0.96128662.hdf5', save_imgs=True)
+    #
+    # # re-ran vertical transform (lr=1e-5)
+    # results_base = '/home/yue/pepple/runs/2017-11-09-23-47-29'
+    # results_folder = os.path.join(results_base, 'weights')
+    # predict_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-025--0.96921231.hdf5', save_imgs=True)
+    # predict_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-050--0.97040034.hdf5', save_imgs=True)
+    # predict_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-100--0.96851523.hdf5', save_imgs=True)
+
+    # check predicted images
+    # check_predicted_images(load_data_including_empty, load_original_data_including_empty, weight_file='weights-improvement-025--0.95883078.hdf5', save_imgs=True)
+    # check_predicted_images(load_data_including_empty, load_original_data_including_empty,
+    #                        weight_file='weights-improvement-050--0.97040034.hdf5', save_imgs=True)
+    # check_predicted_images(load_data_including_empty, load_original_data_including_empty,
+    #                        weight_file='weights-improvement-100--0.96851523.hdf5', save_imgs=True)
+
+    # results_base = './runs/runEmptySeg'
+    # results_folder = os.path.join(results_base, 'weights')
+    # check_predicted_images(load_data_including_empty, load_original_data_including_empty,
+    #                        weight_file='weights-improvement-025--0.95883078.hdf5', save_imgs=True)
+    # check_predicted_images(load_data_including_empty, load_original_data_including_empty,
+    #                        weight_file='weights-improvement-050--0.95777710.hdf5', save_imgs=True)
+    # check_predicted_images(load_data_including_empty, load_original_data_including_empty,
+    #                        weight_file='weights-improvement-100--0.96128662.hdf5', save_imgs=True)
+
+    # plt.switch_backend('agg')
+    predict_stack(do_save=True)
+
     # plot_loss('valid.txt')
     # plot_loss('train.txt')
     # analyse()
@@ -727,8 +1003,8 @@ if __name__ == '__main__':
     # translation_test2(2)
     # translation_test2(0,s max_displacement=496)
 
-    rotation_test()
-    rotation_test2()
+    # rotation_test()
+    # rotation_test2()
     # #plot translation and rotation analysis
     # degs = []
     # deg_dice = []
@@ -747,19 +1023,19 @@ if __name__ == '__main__':
     # evaluate_whole_img_dice(debug_mode=True)
     # debug_whole_image_dice()
 
-    img_num = 100
-    # compute_image_preds(img_num)
-    # make_movie_images(img_num)
-    make_movie_images_new(img_num, transform=-1, transform_amount=5)    # rotate 5 degrees
-    make_movie_images_new(img_num, transform=-1, transform_amount=10)    # rotate 10 degrees
-    make_movie_images_new(img_num, transform=-1, transform_amount=15)    # rotate 15 degrees
-    make_movie_images_new(img_num, transform=-1, transform_amount=20)    # rotate 20 degrees
-
-    make_movie_images_new(img_num, transform=1, transform_amount=20)    # vertical 20 pixels
-    make_movie_images_new(img_num, transform=1, transform_amount=50)    # vertical 20 degrees
-    make_movie_images_new(img_num, transform=1, transform_amount=100)  # vertical 100 degrees
-    make_movie_images_new(img_num, transform=1, transform_amount=200)  # vertical 200 degrees
-    make_movie_images_new(img_num, transform=1, transform_amount=300)  # vertical 300 degrees
+    # img_num = 100
+    # # compute_image_preds(img_num)
+    # # make_movie_images(img_num)
+    # make_movie_images_new(img_num, transform=-1, transform_amount=5)    # rotate 5 degrees
+    # make_movie_images_new(img_num, transform=-1, transform_amount=10)    # rotate 10 degrees
+    # make_movie_images_new(img_num, transform=-1, transform_amount=15)    # rotate 15 degrees
+    # make_movie_images_new(img_num, transform=-1, transform_amount=20)    # rotate 20 degrees
+    #
+    # make_movie_images_new(img_num, transform=1, transform_amount=20)    # vertical 20 pixels
+    # make_movie_images_new(img_num, transform=1, transform_amount=50)    # vertical 20 degrees
+    # make_movie_images_new(img_num, transform=1, transform_amount=100)  # vertical 100 degrees
+    # make_movie_images_new(img_num, transform=1, transform_amount=300)  # vertical 300 degrees
+    # make_movie_images_new(img_num, transform=1, transform_amount=200)  # vertical 200 degrees
 
     # # problematic images
     # predict_problem_img('./acseg/test/Inflamed_20170703mouse4_Day2_Right_591.png')

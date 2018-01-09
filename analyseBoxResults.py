@@ -1,5 +1,5 @@
 import numpy as np
-import glob, cv2
+import glob, cv2, os
 from ast import literal_eval
 
 import matplotlib.pyplot as plt
@@ -73,12 +73,13 @@ def visualize_preds(img, true_coords, pred_coords):
     ax1.set_title('true and predicted ac cells')
     for coord in true_coords:    # add cells to image
         (x1, y1, x2, y2) = coord
-        ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='white', linewidth=1))
+        ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='white', linewidth=3))
+        ax1.scatter(x=[(x1 + x2) / 2], y=[(y1 + y2) / 2], c='yellow', s=2)
 
     for coord in pred_coords:    # add cells to image
         (x1, y1, x2, y2) = coord
         ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color='red', linewidth=1))
-        ax1.scatter(x=[(x1+x2)/2], y=[(y1+y2)/2], c='yellow', s=2)
+        # ax1.scatter(x=[(x1+x2)/2], y=[(y1+y2)/2], c='yellow', s=2)
 
     # show high intensity parts
     plt.figure(3)
@@ -132,10 +133,12 @@ def get_true_coords(folder=test_folder, get_test_data=True):
     if get_test_data:
         path_prefix = '/home/yue/pepple/accell/augmented_test/'
         path_prefix = '/home/yue/pepple/accell/blank_32_32_noisy/valid/'
+        path_prefix = '/home/yue/pepple/accell/blank_32_32_realistic/valid/'
         # coord_file = "{}/test_coords_clean.txt".format(folder)
-        coord_file = "{}/test_coords.txt".format(folder)
+        # coord_file = "{}/test_coords.txt".format(folder)
+        coord_file = "{}/valid_coords.txt".format(folder)
     else:
-        path_prefix = '/home/yue/pepple/accell/augmented/'
+        # path_prefix = '/home/yue/pepple/accell/augmented/'
         path_prefix = '/home/yue/pepple/accell/blank_128_128/train/'
         # folder = './accell/augmented_master'
         # coord_file = "{}/training_coords_clean.txt".format(folder)
@@ -153,11 +156,9 @@ def get_true_coords(folder=test_folder, get_test_data=True):
     return true_dict
 
 
-def get_predicted_coords(folder=test_folder):
+def get_predicted_coords(folder=test_folder, file='coords.txt'):
     predicted_dict = {}
-    # with open("{}/coords.txt".format(results_folder)) as fin:
-    # with open("{}/coords.txt".format(folder)) as fin:
-    with open("{}/coords_noisy.txt".format(folder)) as fin:
+    with open(os.path.join(folder, file)) as fin:
         for l in fin:
             arr = l.rstrip().split("\t")
             file_name = arr[0]
@@ -383,27 +384,55 @@ def get_cone_coords(file='../overview/1-process-data/cone_data_valid.txt'):
     return coord_dict
 
 
-# def analyse_pred_metrics2(pred_npy='predicted_metrics.npy', ):
-def analyse_pred_metrics2(total_score, total_predicted, counter):
-    # num_true, num_pred, min_dist_t, min_dist_p, intensity_t, intensity_p, intensity_m
-    # total_score = np.load(pred_npy)
+# # if over-predicting
+# def analyse_pred_metrics2(total_score, total_predicted, counter):
+#     # num_true, num_pred, min_dist_t, min_dist_p, intensity_t, intensity_p, intensity_m
+#     # total_score = np.load(pred_npy)
+#
+#     # img_mean = np.nanmean(total_score, axis=0)    # doesn't work if overpredicting counter<len(predicted_dict)
+#     pred_minus_true = total_predicted[:, 1] - total_predicted[:, 0]
+#     pred_min_true_quantiles = np.percentile(pred_minus_true, [10, 50, 90])
+#     false_discovery_rate = np.sum(pred_minus_true) / np.sum(total_predicted[:, 1])  # false_positive/pred_positive
+#     precision = 1 - false_discovery_rate
+#
+#     pred_minus_true2 = total_score[range(counter), 1] - total_score[range(counter), 0]
+#     pred_min_true_quantiles2 = np.percentile(pred_minus_true2, [10, 50, 90])
+#     score_mean = np.nanmean(total_score[range(counter),], axis=0)
+#
+#     pred_close = total_score[range(counter), 0] - total_score[range(counter), -1]
+#     num_missed_preds = np.sum(pred_close[np.where(pred_close > 0),])
+#     false_neg_rate = num_missed_preds / np.sum(total_score[range(counter), 0])
+#     sensitivity = 1 - false_neg_rate
+#
+#     return precision, sensitivity, false_discovery_rate, false_neg_rate, pred_min_true_quantiles, pred_min_true_quantiles2
 
-    # img_mean = np.nanmean(total_score, axis=0)    # doesn't work if overpredicting counter<len(predicted_dict)
-    pred_minus_true = total_predicted[:, 1] - total_predicted[:, 0]
-    pred_min_true_quantiles = np.percentile(pred_minus_true, [10, 50, 90])
-    false_discovery_rate = np.sum(pred_minus_true) / np.sum(total_predicted[:, 1])  # false_positive/pred_positive
+
+# total_score columns: num_true, num_pred, min_dist_t, min_dist_p, avg_intensity_t, avg_intensity_p, avg_intensity_matched, num_pred_matched
+# total_predicted: num_true, num_pred
+def analyse_pred_metrics2(total_score, total_predicted, counter):
+    # pred_minus_true = total_predicted[:, 1] - total_predicted[:, 0]
+    # pred_min_true_quantiles = np.percentile(pred_minus_true, [10, 50, 90])
+
+    false_positives = total_score[:counter, 1] - total_score[:counter, -1]    # predicted but not close
+    false_positives2 = np.maximum(total_predicted[counter:, 1] - total_predicted[counter:, 0], 0)   # in case over-prediction
+    total_false_positives = np.nansum(false_positives) + np.nansum(false_positives2)
+    false_discovery_rate = total_false_positives / np.nansum(total_predicted[:, 1])  # false_positive/pred_positive
     precision = 1 - false_discovery_rate
 
-    pred_minus_true2 = total_score[range(counter), 1] - total_score[range(counter), 0]
-    pred_min_true_quantiles2 = np.percentile(pred_minus_true2, [10, 50, 90])
-    score_mean = np.nanmean(total_score[range(counter),], axis=0)
+    # pred_minus_true2 = total_score[:counter, 1] - total_score[:counter, 0]
+    # pred_min_true_quantiles2 = np.percentile(pred_minus_true2, [10, 50, 90])
+    score_mean = np.nanmean(total_score[:counter,], axis=0)
 
-    pred_close = total_score[range(counter), 0] - total_score[range(counter), -1]
-    num_missed_preds = np.sum(pred_close[np.where(pred_close > 0),])
-    false_neg_rate = num_missed_preds / np.sum(total_score[range(counter), 0])
-    sensitivity = 1 - false_neg_rate
+    true_positives = np.nansum(total_score[:counter, -1])     # close to true labelled cell
+    condition_positive = np.nansum(total_predicted[:, 0])
+    sensitivity = float(true_positives)/condition_positive
+    false_neg_rate = 1 - sensitivity
+    # pred_close = total_score[:counter, 0] - total_score[:counter, -1]   # true over
+    # num_missed_preds = np.sum(pred_close[np.where(pred_close > 0),])
+    # false_neg_rate = num_missed_preds / np.sum(total_score[:counter, 0])
+    # sensitivity = 1 - false_neg_rate
 
-    return precision, sensitivity, false_discovery_rate, false_neg_rate, pred_min_true_quantiles, pred_min_true_quantiles2
+    return precision, sensitivity, false_discovery_rate, false_neg_rate, score_mean
 
 
 def analyse_pred_metrics(pred_npy='predicted_metrics.npy'):
@@ -431,6 +460,164 @@ def analyse_pred_metrics(pred_npy='predicted_metrics.npy'):
     return
 
 
+# for class predictions
+def get_class_predictions(results_folder):
+    pred_files = sorted(glob.glob('{0}/coords_*.txt'.format(results_folder)))
+    pred_files = [x for x in os.listdir(results_folder) if x.startswith('coords') and x.endswith('txt')]
+    predicted_dict_by_class = {}
+
+    for idx, pred_file in enumerate(pred_files):
+        # pred_file_base = pred_file.replace(results_folder, '')
+        # key = pred_file.split('_')[-1].replace('.txt', '')
+        key = pred_file.replace('coords_', '').replace('.txt', '')
+        pred_dict = get_predicted_coords(results_folder, pred_file)
+        predicted_dict_by_class[key] = pred_dict
+
+    predicted_dict_by_file = {}
+    for key, value in predicted_dict_by_class.items():
+        for fname, f_coords in value.items():
+            if fname not in predicted_dict_by_file:
+                predicted_dict_by_file[fname] = {}
+                predicted_dict_by_file[fname][key] = f_coords
+            else:
+                if key not in predicted_dict_by_file[fname]:
+                    predicted_dict_by_file[fname][key] = f_coords
+                else:
+                    predicted_dict_by_file[fname][key] += f_coords
+
+    return predicted_dict_by_file, predicted_dict_by_class
+
+
+def get_true_coords_by_class(folder, path_prefix=None, file='valid_coords.txt'):
+    true_dict = {}
+    coord_file = os.path.join(folder.replace('/valid', ''), file)
+    if not path_prefix:
+        # path_prefix = os.path.join('home', 'yue', 'pepple', 'accell', folder.split('/')[-2], 'train')
+        path_prefix = '/home/yue/pepple/accell/{}/{}/'.format(folder.split('/')[-2], folder.split('/')[-1])
+
+    with open(coord_file) as fin:
+        for l in fin:
+            arr = l.rstrip().split(",")  # faster-rcnn input format
+            file_name = arr[0].replace(path_prefix, '')
+            cur_coord = [tuple([int(a) for a in arr[1:-1]])]
+            obj_class = arr[-1]
+
+            if file_name not in true_dict:
+                true_dict[file_name] = {}
+                true_dict[file_name][obj_class] = cur_coord
+            else:
+                if obj_class not in true_dict[file_name]:
+                    true_dict[file_name][obj_class] = cur_coord
+                else:
+                    true_dict[file_name][obj_class] += cur_coord
+    return true_dict
+
+
+def visualize_class_preds(img, true_coords, class_preds):
+    plt.figure(1)
+    plt.clf()
+    plt.imshow(img)
+    plt.title('original strip')
+
+    # # show high intensity parts
+    # plt.figure(3)
+    # plt.clf()
+    # plt.imshow(img)
+    # high_intensity_points = np.argwhere(img > 60)
+    # plt.scatter(x=high_intensity_points[:, 1], y=high_intensity_points[:, 0], c='red', s=1)
+
+    fig1, ax1 = plt.subplots(1)
+    ax1.imshow(img)
+    ax1.set_title('true and predicted ac cells')
+    true_colours= {'cell':'white', 'cell_lite':'yellow', 'cell_medium':'orange'}
+    pred_colours = {'cell':'red', 'cell_lite':'blue', 'cell_medium':'green'}
+    for cname, c_coords in class_preds.items():
+        for coord in c_coords:  # add cells to image
+            (x1, y1, x2, y2) = coord
+            ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color=pred_colours[cname], linewidth=3))
+            ax1.scatter(x=[(x1 + x2) / 2], y=[(y1 + y2) / 2], c=pred_colours[cname], s=1)
+
+        if cname in true_coords:
+            t_coords = true_coords[cname]
+        else:
+            continue
+        for coord in t_coords:  # add cells to image
+            (x1, y1, x2, y2) = coord
+            ax1.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, fill=False, color=true_colours[cname], linewidth=2))
+            # ax1.scatter(x=[(x1+x2)/2], y=[(y1+y2)/2], c=true_colours[cname], s=2)
+    return
+
+
+# compare predicted vs true and plot where necessary
+# plot each class and analyse precision for each class
+def compute_metrics_multi_class(results_folder=test_folder, do_test=True, visualise=False):
+    predicted_dict_by_file, predicted_dict_by_class = get_class_predictions(results_folder)
+    true_dict = get_true_coords_by_class(folder=results_folder)
+
+    # num_true, num_pred, min_dist_t, min_dist_p, intensity_t, intensity_p, intensity_m, num_pred_within_4pixel
+    total_score = np.ndarray((len(predicted_dict_by_file), 8, len(predicted_dict_by_class)), dtype=np.float32)
+    total_predicted = np.ndarray((len(predicted_dict_by_file), 2, len(predicted_dict_by_class)), dtype=np.float32)
+    total_score[:] = np.nan
+    total_predicted[:] = np.nan
+    counter = 0
+    all_counter = 0
+    class_dict = {}
+    class_counter_dict = {'cell':0, 'cell_lite':1, 'cell_medium':2}
+
+    for fname, value in predicted_dict_by_file.items():
+        all_counter +=1     # increase for every predicted
+        img_name = '{}\{}'.format(results_folder, fname)
+        img = cv2.imread(img_name, cv2.IMREAD_GRAYSCALE)
+
+        pred_dict = value
+        cur_true_dict = None
+        if fname in true_dict:
+            cur_true_dict = true_dict[fname]
+            counter +=1     # increase for every file with truth
+        else:
+            continue
+
+        # class_counter = 0
+        for class_name, file_class_preds in pred_dict.items():
+            class_counter = class_counter_dict[class_name]
+            class_dict[class_name] = class_name
+
+            num_preds = len(file_class_preds)
+            total_predicted[all_counter-1, 1, class_counter] = num_preds
+            if cur_true_dict:
+                if class_name in cur_true_dict:
+                    true_class_coords = cur_true_dict[class_name]
+                    num_true = len(true_class_coords)
+                else:
+                    num_true = 0
+                    true_class_coords = []
+
+                total_predicted[all_counter - 1, 0, class_counter] = num_true
+                min_dist_t, min_idx_t = calc_min_dist(true_class_coords, file_class_preds)
+                min_dist_p, min_idx_p = calc_min_dist(file_class_preds, true_class_coords)
+
+                true_avg_intensity, pred_avg_intensity, matched_avg_intensities \
+                    = found_vs_missed_analysis(img, true_class_coords, file_class_preds)
+                total_score[counter-1, :, class_counter] \
+                    = [num_true, num_preds, np.nanmean(min_dist_t), np.nanmean(min_dist_p), true_avg_intensity,
+                       pred_avg_intensity, np.mean(matched_avg_intensities), len(matched_avg_intensities)]
+            # class_counter+=1
+
+
+        if visualise:
+            visualize_class_preds(img, cur_true_dict, pred_dict)
+            # visualize_preds(img, true_class_coords, file_class_preds)
+            1
+            # img_bright_spots(img, intensity_threshold=75)
+
+    # some analysis metrics
+    for idx, class_name in enumerate(class_dict.keys()):
+        # analyse_pred_metrics2(total_score, total_predicted, counter)
+        analyse_pred_metrics2(total_score[:, :, class_counter_dict[class_name]], total_predicted[:, :, class_counter_dict[class_name]], counter)
+
+    return total_score
+
+
 if __name__ == '__main__':
     # check_aug_data(check_test=False)  # check generated data
     # confirm_coord_with_cone_data()    # make sure ac cell data coordinates setup in same way
@@ -439,6 +626,7 @@ if __name__ == '__main__':
     ### for cone data
     # total_score = compute_metrics(visualise=True)
     # score_npy = 'predicted_metrics.npy'
+    # total_score = compute_metrics2(results_folder='../overview/1-process-data/final/valid', do_test=True, visualise=False)
 
     ### ac cell data
     # total_score = compute_metrics2(visualise=False)
@@ -446,6 +634,20 @@ if __name__ == '__main__':
     # total_score = compute_metrics2(results_folder='./accell/blank_32_32/valid', do_test=True, visualise=False)
     # total_score = compute_metrics2(results_folder='./accell/blank_128_128/valid', do_test=True, visualise=False)
     # total_score = compute_metrics2(results_folder='./accell/blank_128_128/train', do_test=False, visualise=False)   # to see if we can overfit
-    total_score = compute_metrics2(results_folder='./accell/blank_32_32_noisy/valid', do_test=True, visualise=False)
-    score_npy = 'predicted_metrics.npy'
+    # total_score = compute_metrics2(results_folder='./accell/blank_32_32_noisy/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/blank_32_32_realistic_v2/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/ac_training_32_32/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics_multi_class(results_folder='./accell/ac_training2_32_32/valid', do_test=True, visualise=False)
+    total_score = compute_metrics_multi_class(results_folder='./accell/ac_training3_32_32/valid', do_test=True, visualise=False)
+
+    # new
+    # total_score = compute_metrics2(results_folder='./accell/blank_128_128/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/blank_128_128/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics2(results_folder='./accell/blank_128_128_noisy/valid', do_test=True, visualise=False)
+    # score_npy = 'predicted_metrics.npy'
     # np.save(score_npy, total_score)
+
+    # segment chamber on original data scale
+    # then slide 32*32 patch across and predict ac cells
+    # track sensitivity/precision etc - see analyseCellPreds.py instead
+    1
