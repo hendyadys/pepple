@@ -746,7 +746,7 @@ def playthrough(mode=0):
         observation, reward, terminal, _ = env.step(action)
         total_reward += reward
 
-        if counter % 1000==0:
+        if counter % 100==0:
             env.render()
             print('t={}'.format(counter), '#visited={}'.format(len(env.visited_coords)),
                   'reward={}'.format(total_reward), 'terminal={}'.format(terminal))
@@ -825,9 +825,9 @@ def generate_trace_path():
 
 
 if __name__ == '__main__':
-    # playthrough(0)
-    # playthrough(1)
-    # playthrough(2)
+    # playthrough(0)    # random
+    # playthrough(1)  # truth
+    # playthrough(2)    # mostly truth
     # generate_trace_path()
 
     # check coordinate fix

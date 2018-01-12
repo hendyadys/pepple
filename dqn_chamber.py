@@ -172,7 +172,7 @@ class Agent():
         x = Flatten(name='flatten')(x)
         x = Dense(1024, activation='relu', name='fc1')(x)
         x = Dense(1024, activation='relu', name='fc2')(x)
-        x = Dense(self.num_actions, activation='softmax', name='predictions')(x)
+        x = Dense(self.num_actions, name='predictions')(x)
 
         # Create model.
         model = Model(inputs, x, name='vgg_simple')

@@ -262,9 +262,9 @@ def review_logs_general(pattern_fun, folder='./dqn_log/logs_1img', is_prefix=Fal
             if img_loc:
                 img_num = int(file_toks[img_loc].replace('i', ''))
             # img_out_folder = '{}/figs/{}_e{}'.format(folder, '_'.join([x for idx,x in enumerate(file_toks) if idx!=episode_loc]), episode_num)
-            img_out_folder = '{}/figs/{}'.format(folder, base_name)
+            img_out_folder = '{}/figs_lin/{}'.format(folder, base_name)
 
-            if episode_num > 5400:
+            if episode_num > 200:
                 review_log_general(experiment_log, episode_num, img_num, img_out_folder=img_out_folder, better_coords=True, save_imgs=True)
     return
 
@@ -338,7 +338,7 @@ def patterns_for_edge(random_data=True):
             for edge_penalty in [0]:
             # for edge_penalty in [0, 1]:
             #     for episode_limit in [50000]:
-                for episode_limit in [10000, 50000]:
+                for episode_limit in [10000, 50000, None]:
                     for intensity_multipler in [0, 1]:
                         frame_width = frame_height
                         log_pattern = 'h{}_w{}_ec{}_ep{}_el{}_im{}'.format(frame_height, frame_width, edge_check,

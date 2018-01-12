@@ -95,16 +95,16 @@ def convert_image(tiff_dir, tiff_name, tiff_out_dir, options='-scale 50%', debug
 
 
 # scale images with imagemagick from 1024*1000 to 512*500
-def convert_raw_imgs(folder):
+def convert_raw_imgs(folder, out_folder=npy_data_folder):
     raw_images, img_names = get_raw_imgs(folder)
-    converted_npy = os.path.join(npy_data_folder, 'converted_imgs.npy')
+    converted_npy = os.path.join(out_folder, 'converted_imgs.npy')
     if os.path.isfile(converted_npy):
         converted_imgs = np.load(converted_npy)
         return raw_images, converted_imgs, img_names
 
     num_images = raw_images.shape[0]
     converted_imgs = np.ndarray((num_images, SCALED_IMG_ROWS, SCALED_IMG_COLS), dtype=np.float32)
-    output_dir = './accell/seg_scaled'
+    output_dir = os.path.join(folder, 'seg_scaled')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -134,9 +134,9 @@ def predict_imgs(model, img_data):
 
 
 # load raw_imgs, converted_imgs (scaled), (corresponding) img_names, predict for each converted_img
-def get_img_predictions(folder=img_folder):
-    raw_images, converted_imgs, img_names = convert_raw_imgs(folder)
-    pred_npy = os.path.join(npy_data_folder, 'img_preds.npy')
+def get_img_predictions(folder=img_folder, out_folder=npy_data_folder):
+    raw_images, converted_imgs, img_names = convert_raw_imgs(folder, out_folder)
+    pred_npy = os.path.join(out_folder, 'img_preds.npy')
     if os.path.isfile(pred_npy):
         img_preds = np.load(pred_npy)
         return raw_images, converted_imgs, img_names, img_preds
