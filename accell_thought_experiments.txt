@@ -1,0 +1,28 @@
+ac cell (+ mitosis cell) thought experiments
+1. probabilistic labels
+  a. instead of deterministic
+2. can't just feed images in naive probabilistic way
+  a. imagine a cell, labelled by one grader but not other
+  b. and all your data consists of that one cell
+  c. then creating 2 copies of image focused in on cell, one with label and one without label
+  d. dl wouldnt learn anything as gradients would cancel!
+3. what if every cell label was probabilistic?
+  a. if cell labelled by both, sample from a distribution 2p/(2p+epsilon), and label according to sample
+  b. augment and include in training
+  c. if cell labelled by one, sample from a distribution p/(2p+epsilon)
+  d. sample in this ratio or would this still confuse dl?
+4. this is similar in spirit to label smoothing, as noise in labels
+5. alternate is mixup (https://arxiv.org/pdf/1710.09412) and cutMix (https://arxiv.org/pdf/1905.04899.pdf)
+  a. but these focus on classification
+  b. cutmix overlays different images together with geometry and smoothing
+  c. maybe we can revisit accell by seeding cells and smoothing
+    i. grab a larger patch instead of focused in on cell and apply smoothing
+    ii. this maybe more robust as dl doesn't focus too much on seeded cell boundaries!
+  d. NB - accell dimensions (~5*5 pixels) much smaller than image dimensions (1024*1000), so downsampling isnt really an option
+6. background papers
+  a. fast r-cnn (ROI), https://arxiv.org/pdf/1504.08083
+  b. faster r-cnn (Region Proposal Network, first classifies proposals as object/non-object), https://arxiv.org/pdf/1506.01497.pdf
+  c. fpn (feature pyramid instead image pyramid), https://arxiv.org/pdf/1612.03144.pdf
+  d. ssd (1-stage), https://arxiv.org/pdf/1512.02325.pdf
+  e. focal loss (helps 1-stage detectors to avoid FP!), https://arxiv.org/pdf/1708.02002.pdf
+  f. fcn , https://arxiv.org/pdf/1411.4038.pdf

@@ -1,0 +1,24 @@
+TODO
+
+12/28/2020
+1. AC vs PC separation
+2. 6 levels in each
+3. split by eye
+4. rr for retina and ra for anterior
+5. agreed score/label from 3 users
+6. metrics
+  a. AC
+  b. PC
+7. 2 models
+ a. accuracy 
+ b. confusion matrix
+8. some NAN scores removed from 
+
+12/28/2020 3:31 PM
+1. TIFF -> png
+  a. resize
+2. split
+3. check classification models
+  a. resnet 51
+  b. biggest images?
+4. 

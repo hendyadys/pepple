@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib import patches
 # plt.switch_backend('agg')
 from make_bbox_data import downsample, DOWNSAMPLE_RATIO
+from analyseCellPreds import check_missed_helper
 
 from sys import platform
 if platform == "linux" or platform == "linux2":
@@ -554,6 +555,34 @@ def compute_metrics_multi_class(results_folder=test_folder, do_test=True, visual
     predicted_dict_by_file, predicted_dict_by_class = get_class_predictions(results_folder)
     true_dict = get_true_coords_by_class(folder=results_folder)
 
+    true_dict_by_class = {}
+    for fname, fdict in true_dict.items():
+        for cname, c_coords in fdict.items():
+            if cname not in true_dict_by_class:
+                true_dict_by_class[cname] = {}
+            true_dict_by_class[cname][fname] = c_coords
+
+    # newer version of sensitivity code - less assumptions
+    if 'ac_training3_32_32' in results_folder:
+        cnames = ['cell', 'cell_medium', 'cell_lite']
+    elif 'ac_training_32_32' in results_folder:
+        cnames = ['cell'] # for ac_training_32_32
+    elif 'ac_training2_32_32' in results_folder:
+        cnames = ['cell', 'cell_lite']
+
+    for cname in cnames:
+        found_dict, missed_dict = check_missed_helper(true_dict_by_class[cname], predicted_dict_by_class[cname], pixel_lim=3)
+        total_predicted = [len(found_cells) for fname, found_cells in found_dict.items()]
+        total_cells = np.sum([len(f_cells) for fname, f_cells in true_dict_by_class[cname].items()])
+        print(cname, total_cells, np.sum(total_predicted), np.sum(total_predicted) / total_cells)
+
+    # newer version of false positive code - less assumptions
+    for cname in cnames:
+        false_positive_dict = check_false_positives_helper(predicted_dict_by_class[cname], true_dict_by_class[cname], pixel_lim=3)
+        num_false_positives = [len(f_cells) for fname, f_cells in false_positive_dict.items()]  # predicted but unmatched
+        num_preds = [len(f_cells) for fname, f_cells in predicted_dict_by_class[cname].items()]
+        print(cname, np.sum(num_false_positives), np.sum(num_preds), np.sum(num_false_positives) / np.sum(num_preds))
+
     # num_true, num_pred, min_dist_t, min_dist_p, intensity_t, intensity_p, intensity_m, num_pred_within_4pixel
     total_score = np.ndarray((len(predicted_dict_by_file), 8, len(predicted_dict_by_class)), dtype=np.float32)
     total_predicted = np.ndarray((len(predicted_dict_by_file), 2, len(predicted_dict_by_class)), dtype=np.float32)
@@ -618,6 +647,42 @@ def compute_metrics_multi_class(results_folder=test_folder, do_test=True, visual
     return total_score
 
 
+def check_false_positives_helper(combined_dict, true_dict, pixel_lim=3):
+    # flip dynamics vs sensitivity code - look at false positives for prediction
+    img_names = true_dict.keys()
+
+    false_positive_dict = {}
+    for fname, c_pred_coords in combined_dict.items():
+        true_key = fname
+        # true_key = fname if fname in true_dict else fname.replace('.png', '')
+        if true_key not in true_dict:
+            false_positive_dict[fname] = c_pred_coords
+            continue
+
+        true_cells = true_dict[true_key]
+        false_positives = []
+
+        for pred_coord in c_pred_coords:
+            matched_true = False
+            for true_coord in true_cells:
+                x1, y1, x2, y2 = pred_coord
+                pred_center = (x1+x2)/2., (y1+y2)/2.
+                if len(true_coord)>2:
+                    true_center = (true_coord[0]+true_coord[2])/2., (true_coord[1]+true_coord[3])/2.
+                else:
+                    true_center = true_coord
+                coord_dist = euclid_dist(true_center, pred_center)
+                if coord_dist <= pixel_lim:
+                    matched_true = True
+
+            if not matched_true:  # didnt match any true coords
+                false_positives.append(pred_coord)
+
+        false_positive_dict[fname] = false_positives
+
+    return false_positive_dict
+
+
 if __name__ == '__main__':
     # check_aug_data(check_test=False)  # check generated data
     # confirm_coord_with_cone_data()    # make sure ac cell data coordinates setup in same way
@@ -638,7 +703,10 @@ if __name__ == '__main__':
     # total_score = compute_metrics2(results_folder='./accell/blank_32_32_realistic_v2/valid', do_test=True, visualise=False)
     # total_score = compute_metrics2(results_folder='./accell/ac_training_32_32/valid', do_test=True, visualise=False)
     # total_score = compute_metrics_multi_class(results_folder='./accell/ac_training2_32_32/valid', do_test=True, visualise=False)
-    total_score = compute_metrics_multi_class(results_folder='./accell/ac_training3_32_32/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics_multi_class(results_folder='./accell/ac_training3_32_32/valid', do_test=True, visualise=False)
+    # total_score = compute_metrics_multi_class(results_folder='./accell/ac_training_32_32/valid', do_test=True,
+    #                                           visualise=False)
+    total_score = compute_metrics_multi_class(results_folder='./accell/ac_training2_32_32/valid', do_test=True, visualise=False)
 
     # new
     # total_score = compute_metrics2(results_folder='./accell/blank_128_128/valid', do_test=True, visualise=False)

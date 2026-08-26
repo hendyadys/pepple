@@ -1,0 +1,4 @@
+# ubuntu
+ssh -i mykey yueswu@10.158.62.110
+# duo
+byobu

@@ -44,21 +44,23 @@ REWARD_ONLY_NEXT_TRUE = 0
 POPULATE_TRUTH = 0  # populate replay memory with human trace
 
 NO_EDGE = 0
-EDGE_CHECK = 0
+EDGE_CHECK = 1
 EDGE_PENALTY = 0
+INTENSITY_MULTIPLIER = 0
 EPISODE_LIMIT = 50000
 EPISODE_LIMIT = 10000
-INTENSITY_MULTIPLIER = 0
+#EPISODE_LIMIT = None 
 
 # NUM_ACTIONS = 9     # directions - allows in place; this is inefficient
 NUM_ACTIONS = 8     # directions - allows in place;
 
 # new img/coord dataset per episode or not - for generalization
-RANDOM_DATA = 0
+RANDOM_DATA = 1
 
 # storage settings
 TRAIN_INTERVAL = 4  # The agent selects 4 actions between successive updates
-STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
+# STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
+STATE_LENGTH = 20  # Number of most recent frames to produce the input to the network
 
 
 class ChamberTracer():
@@ -138,23 +140,26 @@ class ChamberTracer():
     def calc_reward(self, new_coord):
         coord_key = make_coord_key(new_coord)
         if coord_key in self.visited_coords[:-1]:   # up to current coord
-            reward = -0.1   # small penalty for faffing around
+            reward = 0
+            # reward = -0.1   # small penalty for faffing around
         else:
-            # always get next true
-            x, y = get_coord_to_add(self.coords, self.last_true_coord, next_true=(CHEAT_PEEK or REWARD_ONLY_NEXT_TRUE))
-            target_dist = np.sqrt(np.sum((np.asarray([x, y]) - np.asarray(new_coord)) ** 2))
-            reward = -target_dist   # reward is divergence from target
-            # if ADJUST_LOSS:  # large losses if further away
-            #     reward = reward / float(max(FRAME_HEIGHT, FRAME_WIDTH))
-
-            if REWARD_ONLY_NEXT_TRUE:
-                if reward==0:
-                    # reward = 0
-                    self.last_true_coord = coord_key  # for tracking purposes
+            if coord_key in self.coords:
+                reward = 1
+                self.last_true_coord = coord_key
             else:
-                if coord_key in self.coords:
-                    reward = 0
-                    self.last_true_coord = coord_key    # for tracking purposes
+                x, y = get_coord_to_add(self.coords, self.last_true_coord,
+                                        next_true=(CHEAT_PEEK or REWARD_ONLY_NEXT_TRUE))
+                reward = -np.sqrt(np.sum((np.asarray([x, y]) - np.asarray(new_coord)) ** 2))
+
+            # # always get next true
+            # x, y = get_coord_to_add(self.coords, self.last_true_coord, next_true=(CHEAT_PEEK or REWARD_ONLY_NEXT_TRUE))
+            # target_dist = np.sqrt(np.sum((np.asarray([x, y]) - np.asarray(new_coord)) ** 2))
+            # reward = -target_dist   # reward is divergence from target
+            # # if ADJUST_LOSS:  # large losses if further away
+            # #     reward = reward / float(max(FRAME_HEIGHT, FRAME_WIDTH))
+
+            # if coord_key in self.coords:
+            #     self.last_true_coord = coord_key    # for tracking purposes
         return reward
 
     def coord_min_dist(self, new_coord):
@@ -179,9 +184,9 @@ class ChamberTracer():
         is_bounded = within_img_bounds(new_coord)
         terminal = False
         if is_bounded:  # if move is valid (stays within img bounds)
+            self.visited_coords.append(str_new_coord)   # needs new coord for making state images - order MATTERS!
             new_observation = get_img_and_loc(self.original_img, self.visited_coords, self.last_true_coord, self.coords)
             terminal = self._is_terminal()  # check all labeled visited
-            self.visited_coords.append(str_new_coord)   # needs new coord for making state images
         else:
             new_observation = np.copy(cur_state)  # in case pointer problems
             terminal = True     # also terminal if out of bounds
@@ -189,7 +194,7 @@ class ChamberTracer():
                 terminal = False  # keep playing but dont actually take step - artificially extend game
                 new_coord = cur_coord
                 self.visited_coords.append(cur_coord_str)  # needs new coord for making state images
-            else:
+            else:   # terminal=True and stops
                 self.visited_coords.append(str_new_coord)
                 if NO_EDGE:  # edge cliff penalty - probably too sharp
                     reward = -10 ** 10
@@ -827,7 +832,7 @@ def generate_trace_path():
 if __name__ == '__main__':
     # playthrough(0)    # random
     # playthrough(1)  # truth
-    # playthrough(2)    # mostly truth
+    playthrough(2)    # mostly truth
     # generate_trace_path()
 
     # check coordinate fix

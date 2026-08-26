@@ -358,7 +358,7 @@ def load_train_data():
     return imgs_train, imgs_mask_train
 
 
-def slice_data(data, mask, save_data=True):
+def slice_data(data, mask, save_data=True, npy_sliced_path=npy_sliced_path, npy_sliced_mask_path=npy_sliced_mask_path):
     # cropped_rows = 128
     # cropped_cols = 496
     cropped_rows = 496
@@ -386,12 +386,12 @@ def slice_data(data, mask, save_data=True):
                 cur_index = int(cur_index)
                 # print(k, i, j, counter, cur_index)
                 # counter += 1
-                cur_sub_img = data[k, i:i+cropped_rows, j:j+cropped_cols, 0]
+                cur_sub_img = data[k, i:i+cropped_rows, j:j+cropped_cols]
                 sliced_data[cur_index,:,:,0] = cur_sub_img
                 # concatenate is slow
                 # cur_sub_img = cur_sub_img.reshape(1, cropped_rows, cropped_cols, 1)
                 # sliced_data = np.concatenate((sliced_data, cur_sub_img), axis=0)
-                cur_mask = mask[k, i:i+cropped_rows, j:j+cropped_cols, 0]
+                cur_mask = mask[k, i:i+cropped_rows, j:j+cropped_cols]
                 # cur_mask = cur_mask.reshape(1, cropped_rows, cropped_cols, 1)
                 # sliced_mask = np.concatenate((sliced_mask, cur_mask), axis=0)
                 sliced_mask[cur_index,:,:,0] = cur_mask

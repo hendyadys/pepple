@@ -8,90 +8,58 @@ import subprocess
 
 from sys import platform
 if platform == "linux" or platform == "linux2":
-    seg_path = '/data/pepple/acseg/segmentations'
-
-    base_folder = '/home/yue/pepple/acseg'
-    # re-ran vertical transform (lr=1e-5)
-    weights_base = '/home/yue/pepple/runs/2017-11-09-23-47-29'
-    # test_weights = 'weights-improvement-025--0.96921231.hdf5'
-    # test_weights = 'weights-improvement-050--0.97040034.hdf5'
-    test_weights = 'weights-improvement-100--0.96851523.hdf5'
-
-    # with empty seg training data
-    weights_base = '/home/yue/pepple/runs/2017-11-09-10-26-19'
-    # test_weights = 'weights-improvement-025--0.95883078.hdf5'
-    # test_weights = 'weights-improvement-050--0.95777710.hdf5'
-    test_weights = 'weights-improvement-100--0.96128662.hdf5'
-
-    weights_base = './runs/2017-12-10-14-57-11'
-    test_weights = 'weights-improvement-250--0.96331053.hdf5'
-
-    # more balanced training data with more empty segmentations
-    weights_base = './runs/2017-12-11-16-23-19'
-    test_weights = 'weights-improvement-100--0.95683613.hdf5'
-
-    # more balanced training data with more empty segmentations and no random shift in intensities
-    weights_base = './runs/2017-12-11-23-28-26'
-    test_weights = 'weights-improvement-100--0.96009621.hdf5'
-
-    # includes more (unique) images
-    weights_base = './runs/2017-12-12-17-00-53'
-    test_weights = 'weights-improvement-040--0.95886530.hdf5'
-    # test_weights = 'weights-improvement-100--0.80790919.hdf5'
-    # test_weights = 'weights-improvement-129--0.88892231.hdf5'
-    # test_weights = 'weights-improvement-174--0.83855137.hdf5'
-    test_weights = 'weights-improvement-256--0.85407762.hdf5'
-
-    # # includes more (unique) images - more range in augmentation
-    weights_base = './runs/2017-12-13-17-24-48'
-    test_weights = 'weights-improvement-066--0.72392724.hdf5'
-    # test_weights = 'weights-improvement-054--0.62857166.hdf5'
-    test_weights = 'weights-improvement-205--0.41045597.hdf5'
+    seg_base = '/data/yue/pepple/acseg'
+    weights_folder = '/data/yue/pepple/runs/'
 elif platform == "win32":
-    seg_path = './acseg/segmentations'
+    seg_base = 'z:/yue/pepple/acseg'
+    weights_folder = 'z:/yue/pepple/runs/'
 
-    base_folder = './acseg'
-    weights_base = './runs/runVerticalNew'
-    # test_weights = 'weights-improvement-025--0.96921231.hdf5'
-    # test_weights = 'weights-improvement-050--0.97040034.hdf5'
-    test_weights = 'weights-improvement-100--0.96851523.hdf5'
+seg_path = os.path.join(seg_base, 'segmentations')
 
-    weights_base = './runs/runEmptySeg'
-    # test_weights = 'weights-improvement-025--0.95883078.hdf5'
-    # test_weights = 'weights-improvement-050--0.95777710.hdf5'
-    test_weights = 'weights-improvement-100--0.96128662.hdf5'
+# re-ran vertical transform (lr=1e-5)
+weights_base = os.path.join(weights_folder, '2017-11-09-23-47-29')
+# test_weights = 'weights-improvement-025--0.96921231.hdf5'
+# test_weights = 'weights-improvement-050--0.97040034.hdf5'
+test_weights = 'weights-improvement-100--0.96851523.hdf5'
 
-    weights_base = './runs/runEmptyAug'
-    test_weights = 'weights-improvement-250--0.96331053.hdf5'
+# with empty seg training data
+weights_base = os.path.join(weights_folder, '2017-11-09-10-26-19')
+# test_weights = 'weights-improvement-025--0.95883078.hdf5'
+# test_weights = 'weights-improvement-050--0.95777710.hdf5'
+test_weights = 'weights-improvement-100--0.96128662.hdf5'
 
-    # more balanced training data with more empty segmentations
-    weights_base = './runs/runEmptyBalanced0'
-    test_weights = 'weights-improvement-100--0.95683613.hdf5'
+weights_base = os.path.join(weights_folder, '2017-12-10-14-57-11')
+test_weights = 'weights-improvement-250--0.96331053.hdf5'
 
-    # more balanced training data with more empty segmentations and no random shift in intensities
-    weights_base = './runs/runEmptyBalanced'
-    test_weights = 'weights-improvement-100--0.96009621.hdf5'
+# more balanced training data with more empty segmentations
+weights_base = os.path.join(weights_folder, '2017-12-11-16-23-19')
+test_weights = 'weights-improvement-100--0.95683613.hdf5'
 
-    # includes more (unique) images
-    weights_base = './runs/runAllUnique'
-    test_weights = 'weights-improvement-040--0.95886530.hdf5'
-    # test_weights = 'weights-improvement-100--0.80790919.hdf5'
-    # test_weights = 'weights-improvement-129--0.88892231.hdf5'
-    # test_weights = 'weights-improvement-174--0.83855137.hdf5'
-    test_weights = 'weights-improvement-256--0.85407762.hdf5'
+# more balanced training data with more empty segmentations and no random shift in intensities
+weights_base = os.path.join(weights_folder, '2017-12-11-23-28-26')
+test_weights = 'weights-improvement-100--0.96009621.hdf5'
 
-    # # includes more (unique) images - more range in augmentation
-    # weights_base = './runs/runAllUnique2'
-    # test_weights = 'weights-improvement-066--0.72392724.hdf5'
-    # # test_weights = 'weights-improvement-054--0.62857166.hdf5'
-    # test_weights = 'weights-improvement-205--0.41045597.hdf5'
+# includes more (unique) images
+weights_base = os.path.join(weights_folder, '2017-12-12-17-00-53')
+test_weights = 'weights-improvement-040--0.95886530.hdf5'
+# test_weights = 'weights-improvement-100--0.80790919.hdf5'
+# test_weights = 'weights-improvement-129--0.88892231.hdf5'
+# test_weights = 'weights-improvement-174--0.83855137.hdf5'
+# test_weights = 'weights-improvement-256--0.85407762.hdf5'
+#
+# # # includes more (unique) images - more range in augmentation
+# weights_base = os.path.join(weights_folder, '2017-12-13-17-24-48')
+# test_weights = 'weights-improvement-066--0.72392724.hdf5'
+# # test_weights = 'weights-improvement-054--0.62857166.hdf5'
+# test_weights = 'weights-improvement-205--0.41045597.hdf5'
 
 weights_folder = os.path.join(weights_base, 'weights')
-VOLUME_FOLDER = os.path.join(base_folder, 'Volume_tiffs')
-stack_type = 'Uninflamed'
-# stack_type = 'Inflamed'
+VOLUME_FOLDER = os.path.join(seg_base, 'Volume_tiffs')
+VOLUME_FOLDER = os.path.join(seg_base)
+# stack_type = 'Uninflamed'
+stack_type = 'Inflamed'
 STACK_FOLDER = os.path.join(VOLUME_FOLDER, stack_type)
-CONVERTED_FOLDER = os.path.join(base_folder, 'Volume_converted', stack_type)
+CONVERTED_FOLDER = os.path.join(seg_base, 'Volume_converted', stack_type)
 if not os.path.exists(CONVERTED_FOLDER):
     os.makedirs(CONVERTED_FOLDER)
 
@@ -168,7 +136,7 @@ def check_converted_stack(folder=CONVERTED_FOLDER):
 
 
 def predict_converted_stacks():
-    from train import get_unet #, dice_coef, K
+    from train import get_unet  #, dice_coef, K
 
     model = get_unet()
     weight_path = '{}/{}'.format(weights_folder, test_weights)
@@ -365,16 +333,18 @@ def check_titan_vs_local_conversion(folder):
 
 
 if __name__ == '__main__':
-    # convert_stack()
-    # check_converted_stack()
+    convert_stack()
+    check_converted_stack()
 
     # # compare segmented vs converted
-    # check_titan_vs_local_conversion(folder=os.path.join(base_folder, 'Volume_converted'))
+    # check_titan_vs_local_conversion(folder=os.path.join(seg_base, 'Volume_converted'))
     # compare_seg_vs_converted(seg_folder=seg_path, converted_folder=CONVERTED_FOLDER)    # windows conversion seems different
 
     # show thresholded points give visual illusion of being bigger when overlaid
     # pred_folder = '{}\{}'.format(CONVERTED_FOLDER, '20170710mouse1_Day-7_Left')
     # visualise_preds(folder=pred_folder)
+
+    load_stack_orig(stack_folder=os.path.join(CONVERTED_FOLDER, stack_dir), img_rows=DATA_RAW_ROWS, img_cols=DATA_RAW_COLS)
 
     params = load_params()
     predict_converted_stacks()

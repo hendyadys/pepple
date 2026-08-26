@@ -18,6 +18,7 @@ import datetime
 
 from data import load_train_data, load_valid_data, load_sliced_data, load_data_including_empty, load_data_including_empty_all
 from augment import trainGenerator, validGenerator, trainGenerator2, validGenerator2
+from data_ac_seg import load_data
 
 # img_rows = 512
 # # # img_cols = 500
@@ -201,10 +202,7 @@ def get_unet():
 
 
 def _create_weights_folder():
-    # os.mkdir("/data/pepple/runs/%s/" % timestamp)
-    # os.mkdir("/data/pepple/runs/%s/weights" % timestamp)
-    os.mkdir("./runs/%s/" % timestamp)
-    os.mkdir("./runs/%s/weights" % timestamp)
+    os.makedirs("./runs/%s/weights" % timestamp)
 
 
 def train_and_predict():
@@ -219,23 +217,24 @@ def train_and_predict():
     print('-' * 30)
     print('Loading and preprocessing train data...')
     print('-' * 30)
-    imgs_train, imgs_mask_train = load_sliced_data()    # train vs validation split in generator
+    # imgs_train, imgs_mask_train = load_sliced_data()    # train vs validation split in generator
+    imgs_train, imgs_mask_train = load_data(is_train=True)  # train vs validation split in generator
 
-    imgs_train = imgs_train.astype('float32')
-    imgs_mask_train = imgs_mask_train.astype('float32')
+    # imgs_train = imgs_train.astype('float32')
+    # imgs_mask_train = imgs_mask_train.astype('float32')
 
-    mean = np.mean(imgs_train)  # mean for data centering
-    std = np.std(imgs_train)  # std for data normalization
+    # mean = np.mean(imgs_train)  # mean for data centering
+    # std = np.std(imgs_train)  # std for data normalization
+    #
+    # # with open("/data/pepple/runs/%s/params.txt" % timestamp, "w") as fout:
+    # with open("./runs/%s/params.txt" % timestamp, "w") as fout:
+    #     fout.write("mean\t%.9f\n" % mean)
+    #     fout.write("std\t%.9f\n" % std)
+    #     fout.write("lr\t%.9f\n" % lr)
 
-    # with open("/data/pepple/runs/%s/params.txt" % timestamp, "w") as fout:
-    with open("./runs/%s/params.txt" % timestamp, "w") as fout:
-        fout.write("mean\t%.9f\n" % mean)
-        fout.write("std\t%.9f\n" % std)
-        fout.write("lr\t%.9f\n" % lr)
-
-    imgs_train -= mean
-    imgs_train /= std
-    imgs_mask_train /= 255.  # scale masks to [0, 1]
+    # imgs_train -= mean
+    # imgs_train /= std
+    # imgs_mask_train /= 255.  # scale masks to [0, 1]
 
     print('-' * 30)
     print('Creating and compiling model...')
@@ -261,66 +260,66 @@ def train_and_predict():
     return
 
 
-# just copied train_and_predict but with different datasets (now includes empty segmentations)
-def train_and_predict2():
-    _create_weights_folder()
-
-    print('-' * 30)
-    print('Creating and compiling model...')
-    print('-' * 30)
-    model = get_unet()
-    # with open("/data/mri/runs/%s/model.yaml" % timestamp, "w") as fout:
-    #     fout.write(model.to_yaml())
-    lr = 1e-5
-    model.compile(optimizer=Adam(lr=lr), loss=dice_coef_loss, metrics=[dice_coef])
-    print('-' * 30)
-    print('Loading and preprocessing train data...')
-    print('-' * 30)
-    # seg_sliced, seg_masks_sliced, empty_seg_sliced, empty_masks_sliced = load_data_including_empty()
-    seg_sliced, seg_masks_sliced, empty_seg_sliced, empty_masks_sliced = load_data_including_empty_all()
-    print(seg_sliced.shape, seg_masks_sliced.shape, empty_seg_sliced.shape, empty_masks_sliced.shape)
-
-    seg_sliced = seg_sliced.astype('float32')
-    seg_masks_sliced = seg_masks_sliced.astype('float32')
-    empty_seg_sliced = empty_seg_sliced.astype('float32')
-    empty_masks_sliced = empty_masks_sliced.astype('float32')
-
-    mean = np.mean(seg_sliced)  # mean for data centering
-    std = np.std(seg_sliced)  # std for data normalization
-
-    with open("./runs/%s/params.txt" % timestamp, "w") as fout:
-        fout.write("mean\t%.9f\n" % mean)
-        fout.write("std\t%.9f\n" % std)
-        fout.write("lr\t%.9f\n" % lr)
-
-    # seg_masks_sliced -= mean
-    # seg_masks_sliced /= std
-    seg_masks_sliced /= 255.  # scale masks to [0, 1]
-    #
-    # empty_seg_sliced -= mean
-    # empty_seg_sliced /= std
-    empty_masks_sliced /= 255.  # scale masks to [0, 1]
-
-    filepath = "./runs/%s/weights/weights-improvement-{epoch:03d}-{val_loss:.8f}.hdf5" % timestamp
-    checkpoint = ModelCheckpoint(filepath)
-
-    history = LossHistory()
-
-    print('-' * 30)
-    print('Fitting model...')
-    print('-' * 30)
-    model.fit_generator(trainGenerator2(batch_size=batch_size, data=seg_sliced, masks=seg_masks_sliced,
-                                        empty_data=empty_seg_sliced, empty_masks=empty_masks_sliced), nb_worker=1,
-                        validation_data=validGenerator2(batch_size=batch_size, data=seg_sliced, masks=seg_masks_sliced,
-                                        empty_data=empty_seg_sliced, empty_masks=empty_masks_sliced),
-                        samples_per_epoch=10000, nb_epoch=500, verbose=1, nb_val_samples=2500,
-                        callbacks=[history, checkpoint])
-    return
+# # just copied train_and_predict but with different datasets (now includes empty segmentations)
+# def train_and_predict2():
+#     _create_weights_folder()
+#
+#     print('-' * 30)
+#     print('Creating and compiling model...')
+#     print('-' * 30)
+#     model = get_unet()
+#     # with open("/data/mri/runs/%s/model.yaml" % timestamp, "w") as fout:
+#     #     fout.write(model.to_yaml())
+#     lr = 1e-5
+#     model.compile(optimizer=Adam(lr=lr), loss=dice_coef_loss, metrics=[dice_coef])
+#     print('-' * 30)
+#     print('Loading and preprocessing train data...')
+#     print('-' * 30)
+#     # seg_sliced, seg_masks_sliced, empty_seg_sliced, empty_masks_sliced = load_data_including_empty()
+#     seg_sliced, seg_masks_sliced, empty_seg_sliced, empty_masks_sliced = load_data_including_empty_all()
+#     print(seg_sliced.shape, seg_masks_sliced.shape, empty_seg_sliced.shape, empty_masks_sliced.shape)
+#
+#     seg_sliced = seg_sliced.astype('float32')
+#     seg_masks_sliced = seg_masks_sliced.astype('float32')
+#     empty_seg_sliced = empty_seg_sliced.astype('float32')
+#     empty_masks_sliced = empty_masks_sliced.astype('float32')
+#
+#     mean = np.mean(seg_sliced)  # mean for data centering
+#     std = np.std(seg_sliced)  # std for data normalization
+#
+#     with open("./runs/%s/params.txt" % timestamp, "w") as fout:
+#         fout.write("mean\t%.9f\n" % mean)
+#         fout.write("std\t%.9f\n" % std)
+#         fout.write("lr\t%.9f\n" % lr)
+#
+#     # seg_masks_sliced -= mean
+#     # seg_masks_sliced /= std
+#     seg_masks_sliced /= 255.  # scale masks to [0, 1]
+#     #
+#     # empty_seg_sliced -= mean
+#     # empty_seg_sliced /= std
+#     empty_masks_sliced /= 255.  # scale masks to [0, 1]
+#
+#     filepath = "./runs/%s/weights/weights-improvement-{epoch:03d}-{val_loss:.8f}.hdf5" % timestamp
+#     checkpoint = ModelCheckpoint(filepath)
+#
+#     history = LossHistory()
+#
+#     print('-' * 30)
+#     print('Fitting model...')
+#     print('-' * 30)
+#     model.fit_generator(trainGenerator2(batch_size=batch_size, data=seg_sliced, masks=seg_masks_sliced,
+#                                         empty_data=empty_seg_sliced, empty_masks=empty_masks_sliced), nb_worker=1,
+#                         validation_data=validGenerator2(batch_size=batch_size, data=seg_sliced, masks=seg_masks_sliced,
+#                                         empty_data=empty_seg_sliced, empty_masks=empty_masks_sliced),
+#                         samples_per_epoch=10000, nb_epoch=500, verbose=1, nb_val_samples=2500,
+#                         callbacks=[history, checkpoint])
+#     return
 
 
 if __name__ == '__main__':
     # 103=9888/96 seg images (no pepple); 87=8352/96 (empty)
     # seg_sliced, seg_masks_sliced, empty_seg_sliced, empty_masks_sliced = load_data_including_empty()
 
-    # train_and_predict()
-    train_and_predict2()
+    train_and_predict()
+    # train_and_predict2()

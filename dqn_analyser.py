@@ -254,18 +254,22 @@ def review_logs_general(pattern_fun, folder='./dqn_log/logs_1img', is_prefix=Fal
             experiment_logs = sorted(list(glob.glob('{}/*_{}.txt'.format(folder, pattern))))
         else:
             experiment_logs = sorted(list(glob.glob('{}/{}_*.txt'.format(folder, pattern))))
+
         for experiment_log in experiment_logs:
             base_name = experiment_log.replace('.txt', '').replace(folder+'\\', '')
             file_toks = base_name.split('_')
             episode_num = int(file_toks[episode_loc].replace('e', ''))
             img_num = None
+
+            act_type = base_name.split('_')[0]
             if img_loc:
                 img_num = int(file_toks[img_loc].replace('i', ''))
             # img_out_folder = '{}/figs/{}_e{}'.format(folder, '_'.join([x for idx,x in enumerate(file_toks) if idx!=episode_loc]), episode_num)
-            img_out_folder = '{}/figs_lin/{}'.format(folder, base_name)
+            # img_out_folder = '{}/figs_{}/{}'.format(folder, act_type, base_name)
+            img_out_folder = folder
 
-            if episode_num > 200:
-                review_log_general(experiment_log, episode_num, img_num, img_out_folder=img_out_folder, better_coords=True, save_imgs=True)
+            # if ('linear' in experiment_log and episode_num > 50) or (img_num > 0 and 'ec1' in experiment_log and 'softmax' in experiment_log):
+            review_log_general(experiment_log, episode_num, img_num, img_out_folder=img_out_folder, better_coords=True, save_imgs=True)
     return
 
 
@@ -305,7 +309,8 @@ def review_log_general(log_file, episode_num, img_num, img_out_folder, better_co
         prev_data = log_data[:idx, ]
         iter_data = log_data[idx, ]
         if idx % 500 == 0 and idx < 100000:  # and idx < 25000:
-            save_base = log_file.replace('.txt', '').replace(LOG_FOLDER+'\\', '')
+            # save_base = log_file.replace('.txt', '').replace(LOG_FOLDER+'\\', '')
+            save_base = log_file.split('\\')[-1]
             save_path = '{}/{}_e{}_i{}.png'.format(img_out_folder, save_base, episode_num, idx)
             if save_imgs:
                 display_iter(iter_data, prev_data, img, coords, episode_num, save_path=save_path)
@@ -334,16 +339,15 @@ def patterns_for_edge(random_data=True):
     log_patterns = []
     for frame_height in [64]:
         for edge_check in [0, 1]:
-        # for edge_check in [1]:
             for edge_penalty in [0]:
-            # for edge_penalty in [0, 1]:
-            #     for episode_limit in [50000]:
-                for episode_limit in [10000, 50000, None]:
-                    for intensity_multipler in [0, 1]:
-                        frame_width = frame_height
-                        log_pattern = 'h{}_w{}_ec{}_ep{}_el{}_im{}'.format(frame_height, frame_width, edge_check,
-                                                                           edge_penalty, episode_limit, intensity_multipler)
-                        log_patterns.append(log_pattern)
+                for episode_limit in [10000, None]:
+                    for intensity_multipler in [0]:
+                        for activation in ['softmax', 'linear']:
+                            frame_width = frame_height
+                            log_pattern = '{}_h{}_w{}_ec{}_ep{}_el{}_im{}'.format(activation, frame_height, frame_width,
+                                                                                  edge_check, edge_penalty,
+                                                                                  episode_limit, intensity_multipler)
+                            log_patterns.append(log_pattern)
     return log_patterns, len(log_pattern.split('_')), len(log_pattern.split('_'))+1 if random_data else None
 
 
@@ -367,4 +371,7 @@ if __name__ == '__main__':
     # make_movie(image_folder='h64_w64_l1_r0_e102')
 
     # review_logs_general(pattern_fun=patterns_for_single_image)
-    review_logs_general(pattern_fun=patterns_for_edge, folder=LOG_FOLDER)
+    # review_logs_general(pattern_fun=patterns_for_edge, folder=LOG_FOLDER)
+    # review_logs_general(pattern_fun=patterns_for_edge, folder='./dqn_log/test/general')
+    # review_logs_general(pattern_fun=patterns_for_edge, folder='./dqn_log/test/latest')
+    review_logs_general(pattern_fun=patterns_for_edge, folder='./dqn_log/test/longer_test_episodes')

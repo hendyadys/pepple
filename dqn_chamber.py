@@ -9,7 +9,7 @@ import cv2, json
 from chamber_tracer import ChamberTracer, get_img_and_loc, make_state, get_coord_from_img, parse_coord_str, \
     NUM_ACTIONS, LOG_FOLDER, JSON_DIR, IMG_DIR, FILE_BASE, FRAME_HEIGHT, FRAME_WIDTH, RAW_HEIGHT, RAW_WIDTH, \
     DO_CENTRALIZE, CHEAT_PEEK, ADD_LAST, REWARD_ONLY_NEXT_TRUE, POPULATE_TRUTH, RANDOM_DATA, TEST_FOLDER, \
-    NO_EDGE, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT, INTENSITY_MULTIPLIER
+    NO_EDGE, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT, INTENSITY_MULTIPLIER, STATE_LENGTH
 
 import tensorflow as tf
 from collections import deque
@@ -19,7 +19,7 @@ from keras.layers import Input, Convolution2D, MaxPooling2D, Dropout, Flatten, D
 ##
 ENV_NAME = 'ChamberTracer'  # Environment name
 
-STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
+# STATE_LENGTH = 4  # Number of most recent frames to produce the input to the network
 NUM_EPISODES = 12000  # Number of episodes the agent plays
 # GAMMA = 0.99  # Discount factor
 GAMMA = 1  # Discount factor - not sure if discounting makes sense here
@@ -44,23 +44,41 @@ LOAD_NETWORK = False
 TRAIN = True
 # LOAD_NETWORK = True
 # TRAIN = False
-TRAIN_RANDOM = False
+act_type ='softmax'
+# act_type ='relu'
+# act_type ='linear'
+TRAIN_RANDOM = 1
+new_path_format = True
 if TRAIN_RANDOM:   # train on random img per episode
     # SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_l{}_p{}_g{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST,
     #                                                                        POPULATE_TRUTH, RANDOM_DATA)
     # SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_l{}_p{}_g{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST,
     #                                                             POPULATE_TRUTH, RANDOM_DATA)
-    SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_ec{}_ep{}_el{}_im{}_g{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH,
-                                                                               EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT,
-                                                                               INTENSITY_MULTIPLIER, TRAIN_RANDOM)
-    SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_ec{}_ep{}_el{}_im{}_g{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH,
-                                                                            EDGE_CHECK, EPISODE_LIMIT, EDGE_PENALTY,
-                                                                            INTENSITY_MULTIPLIER, TRAIN_RANDOM)
+    if new_path_format:
+        SAVE_NETWORK_PATH = 'saved_networks/{}_{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}_g{}'\
+            .format(ENV_NAME, act_type, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT,
+                    INTENSITY_MULTIPLIER, TRAIN_RANDOM)
+        SAVE_SUMMARY_PATH = 'summary/{}_{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}_g{}'\
+            .format(ENV_NAME, act_type, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK, EPISODE_LIMIT, EDGE_PENALTY,
+                    INTENSITY_MULTIPLIER, TRAIN_RANDOM)
+    else:
+        SAVE_NETWORK_PATH = 'saved_networks/{}_{}_h{}_w{}_ec{}_ep{}_el{}_im{}_g{}'\
+            .format(ENV_NAME, act_type, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT,
+                    INTENSITY_MULTIPLIER, TRAIN_RANDOM)
+        SAVE_SUMMARY_PATH = 'summary/{}_{}_h{}_w{}_ec{}_ep{}_el{}_im{}_g{}'\
+            .format(ENV_NAME, act_type, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EPISODE_LIMIT, EDGE_PENALTY,
+                    INTENSITY_MULTIPLIER, TRAIN_RANDOM)
 elif POPULATE_TRUTH:  # truth gets flushed out too quickly
-    SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_l{}_c{}_r{}_p{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST,
-                                                                           POPULATE_TRUTH)
-    SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_l{}_c{}_r{}_p{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST,
-                                                                    CHEAT_PEEK, REWARD_ONLY_NEXT_TRUE, POPULATE_TRUTH)
+    if new_path_format:
+        SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_s{}_l{}_c{}_r{}_p{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, ADD_LAST, POPULATE_TRUTH)
+        SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_l{}_s{}_c{}_r{}_p{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, ADD_LAST, CHEAT_PEEK, REWARD_ONLY_NEXT_TRUE, POPULATE_TRUTH)
+    else:
+        SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_l{}_c{}_r{}_p{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST, POPULATE_TRUTH)
+        SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_l{}_c{}_r{}_p{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST, CHEAT_PEEK, REWARD_ONLY_NEXT_TRUE, POPULATE_TRUTH)
 else:   # TRAIN or test random on no truth and old 1-image weights
     ADJUST_LOSS = 0
     REWARD_STATIC_PENALTY = 0
@@ -71,11 +89,16 @@ else:   # TRAIN or test random on no truth and old 1-image weights
     # SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_n{}_l{}_c{}_a{}_r{}_s{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, NUM_ACTIONS,
     #                                                                         ADD_LAST, CHEAT_PEEK, ADJUST_LOSS,
     #                                                                         REWARD_ONLY_NEXT_TRUE, REWARD_STATIC_PENALTY)
-    SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_ec{}_ep{}_el{}_im{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH,
-                                                                               EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT,
-                                                                               INTENSITY_MULTIPLIER)
-    SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_ec{}_ep{}_el{}_im{}'.format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK,
-                                                                        EPISODE_LIMIT, EDGE_PENALTY, INTENSITY_MULTIPLIER)
+    if new_path_format:
+        SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT, INTENSITY_MULTIPLIER)
+        SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK, EPISODE_LIMIT, EDGE_PENALTY, INTENSITY_MULTIPLIER)
+    else:
+        SAVE_NETWORK_PATH = 'saved_networks/{}_h{}_w{}_ec{}_ep{}_el{}_im{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT, INTENSITY_MULTIPLIER)
+        SAVE_SUMMARY_PATH = 'summary/{}_h{}_w{}_ec{}_ep{}_el{}_im{}'\
+            .format(ENV_NAME, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EPISODE_LIMIT, EDGE_PENALTY, INTENSITY_MULTIPLIER)
 
 NUM_EPISODES_AT_TEST = 30  # Number of episodes the agent plays at test time
 
@@ -172,7 +195,43 @@ class Agent():
         x = Flatten(name='flatten')(x)
         x = Dense(1024, activation='relu', name='fc1')(x)
         x = Dense(1024, activation='relu', name='fc2')(x)
-        x = Dense(self.num_actions, name='predictions')(x)
+        x = Dense(self.num_actions, name='predictions', activation=act_type)(x)
+
+        # Create model.
+        model = Model(inputs, x, name='vgg_simple')
+        model.summary()     # can also inspect model layers for weights and input/output shapes
+        # s = tf.placeholder(tf.float32, [None, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH])
+        q_values = model(inputs)
+        return inputs, q_values, model
+
+    def build_network_3(self):
+        inputs = Input((FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH))
+
+        # Block 1
+        x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1')(inputs)
+        x = Convolution2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
+        x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
+
+        # Block 2
+        x = Convolution2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
+        x = Convolution2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
+        x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
+
+        # Block 3
+        x = Convolution2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
+        x = Convolution2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
+        x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
+
+        # # Block 4 - more blocks for sizing
+        # x = Convolution2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
+        # x = Convolution2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
+        # x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
+
+        # Classification block
+        x = Flatten(name='flatten')(x)
+        x = Dense(256, activation='relu', name='fc1')(x)
+        x = Dense(256, activation='relu', name='fc2')(x)
+        x = Dense(self.num_actions, name='predictions', activation=act_type)(x)
 
         # Create model.
         model = Model(inputs, x, name='vgg_simple')
@@ -377,9 +436,14 @@ def main():
             combined_data = np.append(combined_data, np.asarray(visited_coords_real), axis=1)
             # file_name = '{}/h{}_w{}_l{}_p{}_e{}_i{}.txt'.format(LOG_FOLDER, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST,
             #                                                     POPULATE_TRUTH, episode_num, env.idx)
-            file_name = '{}/h{}_w{}_ec{}_ep{}_el{}_im{}_e{}_i{}.txt'.format(LOG_FOLDER, FRAME_HEIGHT, FRAME_WIDTH,
-                                                                            EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT,
-                                                                            INTENSITY_MULTIPLIER, episode_num, env.idx)
+            if new_path_format:
+                file_name = '{}/{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}_e{}_i{}.txt'\
+                    .format(LOG_FOLDER, act_type, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK, EDGE_PENALTY,
+                            EPISODE_LIMIT, INTENSITY_MULTIPLIER, episode_num, env.idx)
+            else:
+                file_name = '{}/{}_h{}_w{}_ec{}_ep{}_el{}_im{}_e{}_i{}.txt'\
+                    .format(LOG_FOLDER, act_type, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EDGE_PENALTY, EPISODE_LIMIT,
+                        INTENSITY_MULTIPLIER, episode_num, env.idx)
             np.savetxt(file_name, combined_data, delimiter=",")
     else:  # Test mode
         total_reward = 0
@@ -400,11 +464,14 @@ def main():
                     # save_path = '{}/h{}_w{}_l{}_p{}_e{}_i{}_t{}.png'.format(TEST_FOLDER, FRAME_HEIGHT, FRAME_WIDTH,
                     #                                                         ADD_LAST, POPULATE_TRUTH, episode_num,
                     #                                                         env.idx, num_steps)
-                    save_path = '{}/h{}_w{}_ec{}_ep{}_el{}_im{}_e{}_i{}_t{}.png'.format(TEST_FOLDER, FRAME_HEIGHT,
-                                                                                        FRAME_WIDTH, EDGE_CHECK,
-                                                                                        EDGE_PENALTY, EPISODE_LIMIT,
-                                                                                        INTENSITY_MULTIPLIER,
-                                                                                        episode_num, env.idx, num_steps)
+                    if new_path_format:
+                        save_path = '{}/{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}_e{}_i{}_t{}.png'\
+                            .format(TEST_FOLDER, act_type, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK,
+                                    EDGE_PENALTY, EPISODE_LIMIT, INTENSITY_MULTIPLIER, episode_num, env.idx, num_steps)
+                    else:
+                        save_path = '{}/{}_h{}_w{}_ec{}_ep{}_el{}_im{}_e{}_i{}_t{}.png'\
+                            .format(TEST_FOLDER, act_type, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EDGE_PENALTY,
+                                    EPISODE_LIMIT, INTENSITY_MULTIPLIER, episode_num, env.idx, num_steps)
                     # import matplotlib.pyplot as plt
                     # plt.switch_backend('TkAgg')
                     # env.render()
@@ -419,8 +486,15 @@ def main():
                     combined_data = np.append(combined_data, np.asarray(env.rewards).reshape(num_actions, 1), axis=1)
                     visited_coords_real = [parse_coord_str(x) for x in env.visited_coords]
                     combined_data = np.append(combined_data, np.asarray(visited_coords_real), axis=1)
-                    file_name = '{}/h{}_w{}_l{}_p{}_e{}_i{}.txt'.format(TEST_FOLDER, FRAME_HEIGHT, FRAME_WIDTH, ADD_LAST,
-                                                                        POPULATE_TRUTH, episode_num, env.idx)
+
+                    if new_path_format:
+                        file_name = '{}/{}_h{}_w{}_s{}_ec{}_ep{}_el{}_im{}_e{}_i{}.txt' \
+                            .format(TEST_FOLDER, act_type, FRAME_HEIGHT, FRAME_WIDTH, STATE_LENGTH, EDGE_CHECK,
+                                    EDGE_PENALTY, EPISODE_LIMIT, INTENSITY_MULTIPLIER, episode_num, env.idx)
+                    else:
+                        file_name = '{}/{}_h{}_w{}_ec{}_ep{}_el{}_im{}_e{}_i{}.txt'\
+                            .format(TEST_FOLDER, act_type, FRAME_HEIGHT, FRAME_WIDTH, EDGE_CHECK, EDGE_PENALTY,
+                                    EPISODE_LIMIT, INTENSITY_MULTIPLIER, episode_num, env.idx)
                     np.savetxt(file_name, combined_data, delimiter=",")
                 elif num_steps > 50000:
                     break   # start new game
